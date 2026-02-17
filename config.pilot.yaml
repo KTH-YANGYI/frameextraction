@@ -1,0 +1,39 @@
+﻿input_dir: C:/Users/18046/Desktop/master/masterthesis/原始数据/原始数据
+output_dir: ./out_pilot_v2
+
+roi:
+  mode: fixed
+  rect_landscape: [520, 360, 260, 220]
+  rect_portrait: [160, 260, 360, 360]
+
+segment_detection:
+  method: ssim_ref
+  coarse_fps: 6.0
+  resize_w: 320
+  smooth_win: 7
+  ssim_ref_n_ref: 5
+  threshold:
+    mode: quantile
+    q: 0.98
+    mad_k: 6.0
+  topk: 3
+  fill_to_topk: true
+  segment_len_sec: 8.0
+  merge_gap_sec: 0.5
+
+frame_extraction:
+  fine_fps: 10.0
+  image_ext: jpg
+  jpg_quality_q: 2
+  keep_full_frames: false
+  crop_output: true
+
+report:
+  enable_html: true
+  contact_sheet_fps: 1.0
+  tile: [4, 3]
+
+runtime:
+  workers: 1
+  fail_fast: false
+  log_level: INFO
