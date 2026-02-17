@@ -1,0 +1,924 @@
+=== Page 1 ===
+600 IEEETRANSACTIONSONIMAGEPROCESSING,VOL.13,NO.4,APRIL2004
+Image Quality Assessment: From Error Visibility to
+Structural Similarity
+ZhouWang,Member,IEEE,AlanConradBovik,Fellow,IEEE,HamidRahimSheikh,StudentMember,IEEE,and
+Eero P. Simoncelli, Senior Member, IEEE
+Abstract—Objective methods for assessing perceptual image workdigitalvideoservercanexaminethequalityofvideobeing
+qualitytraditionallyattemptedtoquantifythevisibilityoferrors transmittedinordertocontrolandallocatestreamingresources.
+(differences) between a distorted image and a reference image
+Second, it can be used to optimize algorithms and parameter
+using avarietyofknown properties ofthehuman visual system.
+settingsofimageprocessingsystems.Forinstance,inavisual
+Under the assumption that human visual perception is highly
+adapted for extracting structural information from a scene, we communication system, a quality metric can assist in the op-
+introduce an alternative complementary framework for quality timaldesignofprefilteringandbitassignmentalgorithmsatthe
+assessment based on the degradation of structural information. encoderandofoptimalreconstruction,errorconcealment,and
+As a specific example of this concept, we develop a Structural
+postfilteringalgorithmsatthedecoder.Third,itcanbeusedto
+Similarity Index and demonstrate its promise through a set of
+benchmarkimageprocessingsystemsandalgorithms.
+intuitive examples, as well as comparison to both subjective
+ratings and state-of-the-art objective methods on a database of Objective image quality metrics can be classified according
+imagescompressedwithJPEGandJPEG2000.1 to the availability of an original (distortion-free) image, with
+which the distorted image is to be compared. Most existing
+Index Terms—Error sensitivity, human visual system (HVS),
+image coding, image quality assessment, JPEG, JPEG2000, approaches are known as full-reference, meaning that a com-
+perceptual quality, structural information, structural similarity pletereferenceimageisassumedtobeknown.Inmanypractical
+(SSIM). applications,however,thereferenceimageisnotavailable,and
+ano-referenceor"blind"qualityassessmentapproachisdesir-
+able.Inathirdtypeofmethod,thereferenceimageisonlypar-
+I. INTRODUCTION
+tiallyavailable,intheformofasetofextractedfeaturesmade
+DIGITALimagesaresubjecttoawidevarietyofdistortions
+availableassideinformationtohelpevaluatethequalityofthe
+during acquisition, processing, compression, storage, distortedimage.Thisisreferredtoasreduced-referencequality
+transmission and reproduction, any of which may result in a
+assessment.Thispaperfocusesonfull-referenceimagequality
+degradationofvisualquality.Forapplicationsinwhichimages
+assessment.
+areultimatelytobeviewedbyhumanbeings,theonly“correct”
+The simplest and most widely used full-reference quality
+method of quantifying visual image quality is through subjec-
+metric is the mean squared error (MSE), computed by av-
+tive evaluation. In practice, however, subjective evaluation is
+eraging the squared intensity differences of distorted and
+usually too inconvenient, time-consuming and expensive. The
+referenceimagepixels,alongwiththerelatedquantityofpeak
+goal of research in objective image quality assessment is to
+signal-to-noiseratio(PSNR).Theseareappealingbecausethey
+develop quantitative measures that can automatically predict
+are simple to calculate, have clear physical meanings, and are
+perceivedimagequality.
+mathematically convenient in the context of optimization. But
+Anobjectiveimagequalitymetriccanplayavarietyofroles
+theyarenotverywellmatchedtoperceivedvisualquality(e.g.,
+in image processing applications. First, it can be used to dy-
+[1]–[9]). In the last three decades, a great deal of effort has
+namicallymonitorandadjustimagequality.Forexample,anet-
+gone intothe developmentofqualityassessment methods that
+take advantage of known characteristics of the human visual
+system(HVS).Themajorityoftheproposedperceptualquality
+ManuscriptreceivedJanuary15,2003;revisedAugust18,2003.Thework
+ofZ.WangandE.P.SimoncelliwassupportedbytheHowardHughesMed- assessment models have followed a strategy of modifying the
+icalInstitute.TheworkofA.C.BovikandH.R.Sheikhwassupportedbythe MSE measure so that errors are penalized in accordance with
+NationalScienceFoundationandtheTexasAdvancedResearchProgram.The
+their visibility. Section II summarizes this type of error-sensi-
+associateeditorcoordinatingthereviewofthismanuscriptandapprovingitfor
+publicationwasDr.ReinerEschbach. tivityapproachanddiscussesitsdifficultiesandlimitations.In
+Z. Wang and E. P. Simoncelli are with the Howard Hughes Medical SectionIII,wedescribeanewparadigmforqualityassessment,
+Institute,theCenterforNeuralScienceandtheCourantInstituteforMathe-
+based on the hypothesis that the HVS is highly adapted for
+maticalSciences,NewYorkUniversity,NewYork,NY10012USA(e-mail:
+zhouwang@ieee.org;eero.simoncelli@nyu.edu). extractingstructuralinformation.Asaspecificexample,wede-
+A. C. Bovik and H. R. Sheikh are with the Laboratory for Image and velop a measure of structural similarity (SSIM) that compares
+Video Engineering (LIVE), Department of Electrical and Computer Engi-
+local patterns of pixel intensities that have been normalized
+neering,TheUniversityofTexasatAustin,Austin,TX78712USA(e-mail:
+bovik@ece.utexas.edu;hamid.sheikh@ieee.org). forluminanceandcontrast.InSectionIV,wecomparethetest
+DigitalObjectIdentifier10.1109/TIP.2003.819861 results of different quality assessment models against a large
+setofsubjectiveratingsgatheredforadatabaseof344images
+1AMATLABimplementationoftheproposedalgorithmisavailableonlineat
+http://www.cns.nyu.edu/~lcv/ssim/. compressedwithJPEGandJPEG2000.
+1057-7149/04$20.00©2004IEEE
+
+=== Page 2 ===
+WANGetal.:IMAGEQUALITYASSESSMENT:FROMERRORVISIBILITYTOSSIM 601
+Reference
+signal Quality/
+Pre- CSF Channel . Error . Error Distortion
+Distorted processing Filtering Decomposition . . Normalization . . Pooling Measure
+signal
+Fig.1. Aprototypicalqualityassessmentsystembasedonerrorsensitivity.NotethattheCSFfeaturecanbeimplementedeitherasaseparatestage(asshown)
+orwithin“ErrorNormalization.”
+II. IMAGE QUALITY ASSESSMENT BASED ON (cid:127) Channel Decomposition: The images are typically sepa-
+ERRORSENSITIVITY rated into subbands (commonly called "channels" in the
+psychophysicsliterature)thatareselectiveforspatialand
+An image signal whose quality is being evaluated can be
+temporal frequency as well as orientation. While some
+thought of as a sum of an undistorted reference signal and an
+quality assessment methods implement sophisticated
+error signal. A widely adopted assumption is that the loss of
+channel decompositions that are believed to be closely
+perceptualqualityisdirectlyrelatedtothevisibilityoftheerror
+relatedtotheneuralresponsesintheprimaryvisualcortex
+signal.ThesimplestimplementationofthisconceptistheMSE,
+[2],[15]–[19],manymetricsusesimplertransformssuch
+whichobjectivelyquantifiesthestrengthoftheerrorsignal.But
+as the discrete cosine transform (DCT) [20], [21] or
+two distorted images with the same MSE may have very dif-
+separablewavelettransforms[22]–[24].Channeldecom-
+ferenttypesoferrors,someofwhicharemuchmorevisiblethan
+positionstunedtovarioustemporalfrequencieshavealso
+others. Most perceptual image quality assessment approaches
+beenreportedforvideoqualityassessment[5],[25].
+proposedintheliteratureattempttoweightdifferentaspectsof
+(cid:127) Error Normalization: The error (difference) between
+the error signal according to their visibility, as determined by
+the decomposed reference and distorted signals in each
+psychophysicalmeasurementsinhumansorphysiologicalmea-
+channel is calculated and normalized according to a
+surementsinanimals.ThisapproachwaspioneeredbyMannos
+certainmaskingmodel,whichtakesintoaccountthefact
+and Sakrison [10], and has been extended by many other re-
+that the presence of one image component will decrease
+searchers over the years. Reviews on image and video quality
+the visibility of another image component that is prox-
+assessmentalgorithmscanbefoundin[4]and[11]–[13].
+imate in spatial or temporal location, spatial frequency,
+A. Framework ororientation.Thenormalizationmechanismweightsthe
+error signal in a channel by a space-varying visibility
+Fig. 1 illustrates a generic image quality assessment frame-
+threshold [26]. The visibility threshold at each point is
+workbasedonerrorsensitivity.Mostperceptualqualityassess-
+calculated based on the energy of the reference and/or
+mentmodelscanbedescribedwithasimilardiagram,although
+distorted coefficients in a neighborhood (which may
+theydifferindetail.Thestagesofthediagramareasfollows.
+include coefficients from within a spatial neighborhood
+(cid:127) Pre-processing:Thisstagetypicallyperformsavarietyof
+of the same channel as well as other channels) and the
+basic operations to eliminateknown distortions from the
+base-sensitivity for that channel. The normalization
+imagesbeingcompared.First,thedistortedandreference
+process is intended to convert the error into units of just
+signalsareproperlyscaledandaligned.Second,thesignal
+noticeabledifference(JND).Somemethodsalsoconsider
+might be transformed into a color space (e.g., [14]) that
+theeffectofcontrastresponsesaturation(e.g.,[2]).
+is more appropriate for the HVS. Third, quality assess-
+(cid:127) ErrorPooling:Thefinalstageofallqualitymetricsmust
+mentmetricsmayneedtoconvertthedigitalpixelvalues
+combine the normalized error signals over the spatial
+storedinthecomputermemoryintoluminancevaluesof
+extent of the image, and across the different channels,
+pixelsonthe displaydevicethrough pointwisenonlinear
+intoasinglevalue.Formostqualityassessmentmethods,
+transformations. Fourth, a low-pass filter simulating the
+poolingtakestheformofaMinkowskinormasfollows:
+point spread function of the eye optics may be applied.
+Finally, the reference and the distorted images may be
+modified using a nonlinear point operation to simulate (1)
+lightadaptation.
+(cid:127) CSF Filtering: The contrast sensitivity function (CSF) where is the normalized error of the -th coefficient
+describes the sensitivity of the HVS to different spatial inthe thchannel,and isaconstantexponenttypically
+and temporal frequencies that are present in the visual chosentoliebetween1and4.Minkowskipoolingmaybe
+stimulus.Someimagequalitymetricsincludeastagethat performed overspace (index ) and then over frequency
+weights the signal according to this function (typically (index ), or vice versa, with some nonlinearity between
+implemented using a linear filter that approximates the them, or possibly with different exponents . A spatial
+frequency response of the CSF). However, many recent mapindicatingtherelativeimportanceofdifferentregions
+metrics choose to implement CSF as a base-sensitivity may also be used to provide spatially variant weighting
+normalizationfactorafterchanneldecomposition. [25],[27],[28].
+
+=== Page 3 ===
+602 IEEETRANSACTIONSONIMAGEPROCESSING,VOL.13,NO.4,APRIL2004
+B. Limitations (cid:127) The Decorrelation Problem. When one chooses to use a
+Minkowskimetricforspatiallypoolingerrors,oneisim-
+The underlying principle of the error-sensitivity approach
+plicitlyassumingthaterrorsatdifferentlocationsaresta-
+is that perceptual quality is best estimated by quantifying the
+tisticallyindependent.Thiswouldbetrueiftheprocessing
+visibility of errors. This is essentially accomplished by simu-
+priortothepoolingeliminateddependenciesintheinput
+lating the functional properties of early stages of the HVS, as
+signals.Empirically,however,thisisnotthecaseforlinear
+characterizedbybothpsychophysicalandphysiologicalexper-
+channeldecompositionmethodssuchasthewavelettrans-
+iments. Although this bottom-up approach to the problem has
+form. It has been shown that a strong dependency exists
+foundnearlyuniversalacceptance,itisimportanttorecognize
+between intra- and inter-channel wavelet coefficients of
+its limitations. In particular, the HVS is a complex and highly
+naturalimages[36],[37].Infact,state-of-the-artwavelet
+nonlinear system, but most models of early vision are based
+image compression techniques achieve their success by
+onlinearor quasilinearoperators thathavebeencharacterized
+exploitingthisstrongdependency[38]–[41].Psychophys-
+using restricted and simplistic stimuli. Thus, error-sensitivity
+ically, various visual masking models have been used to
+approaches must rely on a number of strong assumptions and
+accountfortheinteractionsbetweencoefficients[2],[42].
+generalizations. These have been noted by many previous
+Statistically,ithasbeenshownthatawell-designednon-
+authors,andweprovideonlyabriefsummaryhere.
+linear gain control model, in which parameters are opti-
+(cid:127) The Quality Definition Problem: The most fundamental
+mizedtoreducedependenciesratherthanforfittingdata
+problemwiththetraditionalapproachisthedefinitionof
+frommaskingexperiments,cangreatlyreducethedepen-
+imagequality. Inparticular, itisnotclear thaterrorvisi-
+dencies of the transform coefficients [43], [44]. In [45],
+bilityshouldbeequatedwithlossofquality,assomedis-
+[46],itisshownthatoptimaldesignoftransformationand
+tortions may be clearly visible but not so objectionable.
+masking models can reduce both statistical and percep-
+Anobviousexamplewouldbemultiplicationoftheimage
+tualdependencies.Itremainstobeseenhowmuchthese
+intensitiesbyaglobalscalefactor.Thestudyin[29]also
+modelscanimprovetheperformanceofthecurrentquality
+suggestedthatthecorrelationbetweenimagefidelityand
+assessmentalgorithms.
+imagequalityisonlymoderate.
+(cid:127) The Cognitive Interaction Problem. It is widely known
+(cid:127) TheSuprathresholdProblem.Thepsychophysicalexper-
+that cognitive understanding and interactive visual pro-
+iments that underlie many error sensitivity models are
+cessing (e.g., eye movements) influence the perceived
+specificallydesignedtoestimatethethresholdatwhicha
+quality of images. For example, a human observer will
+stimulusis justbarely visible.Thesemeasuredthreshold
+give different quality scores to the same image if s/he
+values are then used to define visual error sensitivity
+is provided with different instructions [4], [30]. Prior
+measures, such as the CSF and various masking effects.
+information regarding the image content, or attention
+However, very few psychophysical studies indicate
+and fixation,may also affect the evaluation of the image
+whether such near-threshold models can be generalized
+quality [4], [47]. But most image quality metrics do not
+to characterize perceptual distortions significantly larger
+considertheseeffects,astheyaredifficulttoquantifyand
+thanthresholdlevels,asisthecaseinamajorityofimage
+notwellunderstood.
+processing situations. In the suprathreshold range, can
+the relative visual distortions between different channels
+be normalized using the visibility thresholds? Recent III. STRUCTURAL-SIMILARITY-BASED
+efforts have been made to incorporate suprathreshold IMAGEQUALITYASSESSMENT
+psychophysics for analyzing image distortions (e.g.,
+Natural image signals are highly structured: their pixels
+[30]–[34]).
+exhibitstrongdependencies,especiallywhentheyarespatially
+(cid:127) The Natural Image Complexity Problem. Most psy-
+proximate,andthesedependenciescarryimportantinformation
+chophysical experiments are conducted using relatively
+about the structure of the objects in the visual scene. The
+simplepatterns,suchasspots,bars,orsinusoidalgratings.
+Minkowski error metric is based on pointwise signal differ-
+Forexample,theCSFistypicallyobtainedfromthreshold
+ences,whichareindependentoftheunderlyingsignalstructure.
+experimentsusingglobalsinusoidalimages.Themasking
+Although most quality measures based on error sensitivity
+phenomena are usually characterized using a superposi-
+decompose image signals using linear transformations, these
+tion of two (or perhaps a few) different patterns. But all
+do not remove the strong dependencies, as discussed in the
+such patterns are much simpler than real world images,
+previoussection.Themotivationofournewapproachistofind
+which can be thought of as a superposition of a much
+a more direct way to compare the structures of the reference
+larger number of simple patterns. Can the models for
+andthedistortedsignals.
+the interactions between a few simple patterns gener-
+alize to evaluate interactions between tens or hundreds
+A. NewPhilosophy
+of patterns? Is this limited number of simple-stimulus
+experiments sufficient to build a model that can predict In [6] and [9], a new framework for the design of image
+the visual quality of complex-structured natural images? quality measures was proposed, based on the assumption that
+Althoughtheanswerstothesequestionsarecurrentlynot thehumanvisualsystemishighlyadaptedtoextractstructural
+known, the recently established Modelfest dataset [35] informationfromtheviewingfield.Itfollowsthatameasureof
+includes both simple and complex patterns, and should structural information change can provide a good approxima-
+facilitatefuturestudies. tiontoperceivedimagedistortion.
+
+=== Page 4 ===
+WANGetal.:IMAGEQUALITYASSESSMENT:FROMERRORVISIBILITYTOSSIM 603
+(a) (b) (c)
+(d) (e) (f)
+Fig.2. Comparisonof“Boat”imageswithdifferenttypesofdistortions,allwithMSE=210.(a)Originalimage(8bits/pixel;croppedfrom512(cid:2)512to256
+(cid:2)256forvisibility).(b)Contrast-stretchedimage,MSSIM =0:9168.(c)Mean-shiftedimage,MSSIM =0:9900.(d)JPEGcompressedimage,MSSIM =
+0:6949.(e)Blurredimage,MSSIM=0:7052.(f)Salt-pepperimpulsivenoisecontaminatedimage,MSSIM=0:7748.
+This new philosophy can be best understood through com- threshold psychophysics to quantify the perceived distortions.
+parison with the error sensitivity philosophy. First, the error On the other hand, the cognitive interaction problem is also
+sensitivity approach estimates perceived errors to quantify reduced to a certain extent because probing the structures of
+imagedegradations,whilethenewphilosophyconsidersimage the objects being observed is thought of as the purpose of the
+degradations as perceived changes in structural information entire process of visual observation, including high level and
+variation.AmotivatingexampleisshowninFig.2,wherethe interactiveprocesses.
+original“Boat”imageisalteredwithdifferentdistortions,each Third,theproblemsofnaturalimagecomplexityanddecor-
+adjusted to yield nearly identical MSE relative to the original relation are also avoided to some extent because the new
+image. Despite this, the images can be seen to have dras- philosophydoesnotattempt topredictimagequality byaccu-
+tically different perceptual quality. With the error sensitivity mulatingtheerrorsassociatedwithpsychophysicallyunderstood
+philosophy, it is difficulttoexplain why the contrast-stretched simplepatterns.Instead,the newphilosophyproposestoeval-
+imagehasveryhighqualityinconsiderationofthefactthatits uate the structural changes between two complex-structured
+visualdifferencefromthereferenceimageiseasilydiscerned. signals directly.
+But it is easily understood with the new philosophy since
+nearly all the structural information of the reference image is
+B. TheSSIMIndex
+preserved, in the sense that the original information can be
+nearly fully recovered via a simple pointwise inverse linear WeconstructaspecificexampleofaSSIMqualitymeasure
+luminance transform (except perhaps for the very bright and fromtheperspectiveofimageformation.Apreviousinstantia-
+darkregionswheresaturationoccurs).Ontheotherhand,some tionofthisapproachwasmadein[6]–[8]andpromisingresults
+structural information from the original image is permanently onsimpletestswereachieved.Inthispaper,wegeneralizethis
+lost in the JPEG compressed and the blurred images, and algorithm,andprovideamoreextensivesetofvalidationresults.
+therefore they should be given lower quality scores than the Theluminanceofthesurfaceofanobjectbeingobservedis
+contrast-stretched and mean-shifted images. theproductoftheilluminationandthereflectance,butthestruc-
+Second, the error-sensitivity paradigm is a bottom-up turesoftheobjectsinthe sceneareindependentoftheillumi-
+approach,simulatingthefunctionofrelevantearly-stagecom- nation. Consequently, to explore the structural information in
+ponentsintheHVS.Thenewparadigmisatop-downapproach, animage,wewishtoseparatetheinfluenceoftheillumination.
+mimicking the hypothesized functionality of the overall HVS. We define the structural information in an image as those at-
+This, on the one hand, avoids the suprathreshold problem tributesthatrepresentthestructureofobjectsinthescene,inde-
+mentioned in the previous section because it does not rely on pendentoftheaverageluminanceandcontrast.Sinceluminance
+
+=== Page 5 ===
+604 IEEETRANSACTIONSONIMAGEPROCESSING,VOL.13,NO.4,APRIL2004
+Luminance
+Signal x
+Measurement
+_
++ Contrast
+Measurement Luminance
++
+Comparison
+.
+_.
+Contrast Similarity
+Combination
+Luminance Comparison Measure
+Signal y
+Measurement
+_ Structure
++ Contrast Comparison
+Measurement
++
+.
+_.
+Fig.3. Diagramofthestructuralsimilarity(SSIM)measurementsystem.
+andcontrastcanvaryacrossascene,weusethelocalluminance Finally, the three components are combined to yield an
+andcontrastforourdefinition. overallsimilaritymeasure
+The system diagram of the proposed quality assessment
+systemisshowninFig.3.Suppose and aretwononnegative (5)
+image signals, which have been aligned with each other (e.g.,
+spatial patches extracted from each image). If we consider An important point is that the three components are relatively
+one of the signals to have perfect quality, then the similarity independent.Forexample,thechangeofluminanceand/orcon-
+measurecanserveasaquantitativemeasurementofthequality trastwillnotaffectthestructuresofimages.
+ofthesecondsignal.Thesystemseparatesthetaskofsimilarity Inordertocompletethedefinitionofthesimilaritymeasure
+measurement into three comparisons: luminance, contrast and in(5),weneedtodefinethethreefunctions , ,and
+structure.First,theluminanceofeachsignaliscompared.As- ,aswellasthecombinationfunction .Wealsowould
+sumingdiscretesignals,thisisestimatedasthemeanintensity likethesimilaritymeasuretosatisfythefollowingconditions.
+1) Symmetry: .
+2) Boundedness: .
+(2)
+3) Uniquemaximum: ifandonlyif (in
+discreterepresentations, forall ).
+The luminance comparison function is then a function Forluminancecomparison,wedefine
+of and .
+Second, we remove the mean intensity from the signal. In
+(6)
+discrete form, the resulting signal corresponds to the
+projectionofvector ontothehyperplanedefinedby
+wheretheconstant isincludedtoavoidinstabilitywhen
+isveryclosetozero.Specifically,wechoose
+(3)
+(7)
+Weusethestandarddeviation(thesquarerootofvariance)asan
+where isthedynamicrangeofthepixelvalues(255for8-bit
+estimateofthesignalcontrast.Anunbiasedestimateindiscrete
+grayscale images), and is a small constant. Similar
+formisgivenby
+considerationsalsoapplytocontrastcomparisonandstructure
+comparisondescribedlater.Equation(6)iseasilyseentoobey
+thethreepropertieslistedabove.
+(4)
+Equation(6)isalsoqualitativelyconsistentwithWeber’slaw,
+which has been widely used to model light adaptation (also
+The contrast comparison is then the comparison of calledluminancemasking)intheHVS.AccordingtoWeber’s
+and . law,themagnitudeofajust-noticeableluminancechange is
+Third,thesignalisnormalized(divided)byitsownstandard approximatelyproportionaltothebackgroundluminance for
+deviation,sothatthetwosignalsbeingcomparedhaveunitstan- a wide range of luminance values. In other words, the HVSis
+darddeviation.Thestructurecomparison isconducted sensitivetotherelativeluminancechange,andnottheabsolute
+onthesenormalizedsignals and . luminance change. Letting represent the size of luminance
+
+=== Page 6 ===
+WANGetal.:IMAGEQUALITYASSESSMENT:FROMERRORVISIBILITYTOSSIM 605
+changerelativetobackgroundluminance,werewritethelumi- The relationship between the SSIM index and more tradi-
+nanceofthedistortedsignalas .Substituting tional quality metrics may be illustrated geometrically in a
+thisinto(6)gives vector space of image components. These image components
+canbeeitherpixelintensitiesorotherextractedfeaturessuchas
+(8) transformed linear coefficients. Fig. 4 shows equal-distortion
+contours drawn around three different example reference
+vectors, each of which represents the local content of one
+Ifweassume issmallenough(relativeto )tobeignored,
+referenceimage.Forthepurposeofillustration,weshowonly
+then isafunctiononlyof ,qualitativelyconsistentwith
+a two-dimensional space, but in general the dimensionality
+Weber’slaw.
+should match the number of image components being com-
+Thecontrastcomparisonfunctiontakesasimilarform
+pared. Each contour represents a set of images with equal
+distortions relative to the enclosed reference image. Fig. 4(a)
+(9)
+showstheresultforasimpleMinkowskimetric.Eachcontour
+hasthesamesizeandshape(acirclehere,asweareassuming
+where ,and .Thisdefinitionagainsat-
+an exponent of 2). That is, perceptual distance corresponds to
+isfiesthethreepropertieslistedabove.Animportantfeatureof
+Euclidean distance. Fig. 4(b) shows a Minkowski metric in
+this function is that with the same amount of contrast change
+which different image components are weighted differently.
+,thismeasureislesssensitivetothecaseofhigh
+This could be, for example, weighting according to the CSF,
+basecontrast thanlowbasecontrast.Thisisconsistentwith
+asiscommoninmanymodels.Here thecontours are ellipses,
+thecontrast-maskingfeatureoftheHVS.
+butstillareallthesamesize.Theseareshownalignedwiththe
+Structure comparison is conducted after luminance subtrac-
+axes,butingeneralcouldbetiltedtoanyfixedorientation.
+tionand variancenormalization.Specifically,we associatethe
+Manyrecentmodelsincorporatecontrastmaskingbehaviors,
+twounitvectors and ,eachlyingin
+which has the effect of rescaling the equal-distortion contours
+thehyperplanedefinedby(3),withthestructureofthetwoim-
+accordingtothesignalmagnitude,asshowninFig.4(c).This
+ages.Thecorrelation(innerproduct)betweentheseisasimple
+may be viewed as a type of adaptive distortion metric: it de-
+andeffectivemeasuretoquantifythestructuralsimilarity.No-
+pends not just on the difference between the signals, but also
+ticethatthecorrelationbetween and is
+on the signals themselves. Fig. 4(d) shows a combination of
+equivalenttothecorrelationcoefficientbetween and .Thus,
+contrast masking (magnitude weighting) followed by compo-
+wedefinethestructurecomparisonfunctionasfollows:
+nentweighting.Ourproposedmethod,ontheotherhand,sep-
+arately computes a comparison of two independent quantities:
+(10)
+thevectorlengths,andtheirangles.Thus,thecontourswillbe
+aligned with the axes of a polar coordinate system. Figs. 4(e)
+Asintheluminanceandcontrastmeasures,wehaveintroduced
+and 4(f) show two examples of this, computed with different
+asmallconstantinbothdenominatorandnumerator.Indiscrete
+exponents.Again,thismaybeviewedasanadaptivedistortion
+form, canbeestimatedas
+metric,butunlikepreviousmodels,boththesizeandtheshape
+ofthe contours are adaptedtothe underlyingsignal. Somere-
+(11) centmodelsthatusedivisivenormalizationtodescribemasking
+effectsalsoexhibitsignal-dependentcontourorientations(e.g.,
+Geometrically,thecorrelationcoefficientcorrespondstotheco- [45],[46],[48]),althoughprecisealignmentwiththeaxesofa
+sineoftheanglebetweenthevectors and .Note polarcoordinatesystemasinFig.4(e)and(f)isnotobservedin
+alsothat cantakeonnegative ’s. thesemethods.
+Finally, we combine the three comparisons of (6), (9) and
+(10)andnametheresultingsimilaritymeasuretheSSIMindex C. ImageQualityAssessmentUsingSSIMIndex
+betweensignals and Forimagequalityassessment,itisusefultoapplytheSSIM
+index locally rather than globally. First, image statistical fea-
+(12)
+turesareusuallyhighlyspatiallynonstationary.Second,image
+where , and areparametersusedtoadjustthe distortions, which may or may not depend on the local image
+relativeimportanceofthethreecomponents.Itiseasytoverify statistics, may also be space-variant. Third, at typical viewing
+thatthisdefinitionsatisfiesthethreeconditionsgivenabove.In distances,onlyalocalareaintheimagecanbeperceivedwith
+order to simplify the expression, we set and high resolution by the human observer at one time instance
+inthispaper.Thisresultsinaspecificformofthe (because of the foveation feature of the HVS [49], [50]). And
+SSIM index finally, localized quality measurement can provide a spatially
+varying quality map of the image, which delivers more infor-
+(13) mationaboutthequalitydegradationoftheimageandmaybe
+usefulinsomeapplications.
+The“universalqualityindex”(UQI)definedin[6]and[7]cor- In[6]and[7],thelocalstatistics , and arecomputed
+respondstothespecialcasethat ,whichproduces withinalocal8 8squarewindow,whichmovespixel-by-pixel
+unstableresultswheneither or isveryclose overtheentireimage.Ateachstep,thelocalstatisticsandSSIM
+to zero. indexarecalculatedwithinthelocalwindow.Oneproblemwith
+
+=== Page 7 ===
+606 IEEETRANSACTIONSONIMAGEPROCESSING,VOL.13,NO.4,APRIL2004
+j j j
+i i i
+O O O
+(a) (b) (c)
+j j j
+i i i
+O O O
+(d) (e) (f)
+Fig.4. Threeexampleequal-distancecontoursfordifferentqualitymetrics.(a)Minkowskierrormeasurementsystems.(b)ComponentweightedMinkowskierror
+measurementsystems.(c)Magnitude-weightedMinkowskierrormeasurementsystems.(d)Magnitudeandcomponent-weightedMinkowskierrormeasurement
+systems.(e)Theproposedsystem(acombinationof(9)and(10))withmoreemphasisons(x;y).(f)Theproposedsystem[acombinationof(9)and(10)]with
+moreemphasisonc(x;y).Eachimageisrepresentedasavector,whoseentriesareimagecomponents.Note:thisisanillustrationin2-Dspace.Inpractice,the
+numberofdimensionsshouldbeequaltothenumberofimagecomponentsusedforcomparison(e.g,thenumberofpixelsortransformcoefficients).
+this method is that the resulting SSIM index map often ex- where and arethereferenceandthedistortedimages,re-
+hibits undesirable “blocking” artifacts. In this paper, we use spectively; and are the image contents at the th local
+an 11 11 circular-symmetric Gaussian weighting function window;and isthenumberoflocalwindowsoftheimage.
+,withstandarddeviationof1.5sam- Depending on the application, it is also possible to compute a
+ples,normalizedtounitsum .Theestimatesof weighted average of the different samples in the SSIM index
+localstatistics , and arethenmodifiedaccordinglyas map.Forexample,region-of-interestimageprocessingsystems
+may give different weights to different segmented regions in
+the image. As another example, it has been observed that dif-
+(14) ferent image textures attract human fixations with varying de-
+grees(e.g.,[51],[52]).Asmoothlyvaryingfoveatedweighting
+model(e.g.,[50])canbeemployedtodefinetheweights.Inthis
+(15) paper,however,weuseuniformweighting.AMATLABimple-
+mentation of the SSIM index algorithm is available online at
+[53].
+(16)
+IV. EXPERIMENTALRESULTS
+Manyimagequalityassessmentalgorithmshavebeenshown
+Withsuchawindowingapproach,thequalitymapsexhibitalo-
+tobehaveconsistentlywhenappliedtodistortedimagescreated
+callyisotropicproperty.Throughoutthispaper,theSSIMmea-
+fromthesameoriginalimage,usingthesametypeofdistortions
+sureusesthefollowingparametersettings: ;
+(e.g., JPEG compression). However, the effectiveness of these
+. These values are somewhat arbitrary, butwe find that in
+modelsdegradessignificantlywhen appliedtoasetofimages
+ourcurrentexperiments,theperformanceoftheSSIMindexal-
+originatingfromdifferentreferenceimages,and/orincludinga
+gorithmisfairlyinsensitivetovariationsofthesevalues.
+varietyofdifferenttypesofdistortions.Thus,cross-imageand
+Inpractice,oneusuallyrequiresasingleoverallqualitymea-
+cross-distortiontestsarecriticalinevaluatingtheeffectiveness
+sureoftheentireimage.WeuseameanSSIM(MSSIM)index
+ofanimagequalitymetric.Itisimpossibletoshowathorough
+toevaluatetheoverallimagequality
+setofsuchexamples,buttheimagesinFig.2provideanencour-
+agingstartingpointfortestingthecross-distortioncapabilityof
+(17) thequalityassessmentalgorithms.TheMSEandMSSIMmea-
+surementresultsaregiveninthefigurecaption.Obviously,MSE
+
+=== Page 8 ===
+WANGetal.:IMAGEQUALITYASSESSMENT:FROMERRORVISIBILITYTOSSIM 607
+performs very poorly in this case. The MSSIM values exhibit
+muchbetterconsistencywiththequalitativevisualappearance.
+A. Best-Case/Worst-CaseValidation
+We also have developed a more efficient methodology for
+examining the relationship between our objective measure
+and perceived quality. Starting from a distorted image, we
+ascend/descend the gradient of MSSIM while constraining
+the MSEto remain equal tothat ofthe initial distortedimage. gradient (c)
+original image ascent
+Specifically,weiteratethefollowingtwolinear-algebraicsteps:
+add
+noise
+where isthesquarerootoftheconstrainedMSE, controls
+thestepsize,and isaunitvectordefinedby
+(a) gradient (b)
+and isaprojectionoperator descent
+with the identity operator. MSSIM is differentiable and this
+procedure converges toa local maximum/minimum of the ob-
+jectivemeasure.Visualinspectionofthesebest-andworst-case
+images, along with the initial distorted image, provides a vi-
+sualindicationofthetypesofdistortiondeemedleast/mostim-
+portant bytheobjectivemeasure. Therefore,itis an expedient
+(d)
+and direct method for revealing perceptual implications of the
+qualitymeasure.AnexampleisshowninFig.5,wheretheini-
+tialimageiscontaminatedwithGaussianwhitenoise.Itcanbe Fig. 5. Best- and worst-caseSSIMimages, with identical MSE.These are
+computed by gradient ascent/descent iterative search on MSSIM measure,
+seenthatthelocalstructuresoftheoriginalimageareverywell undertheconstraintoffixedMSE = 2500.(a)Originalimage(100(cid:2)100,
+preserved in the maximal MSSIM image. On the other hand, 8bits/pixel,croppedfromthe“Boat”image).(b)Initialimage,contaminated
+theimagestructuresarechangeddramaticallyintheworst-case
+withGaussianwhitenoise(MSSIM=0:3021).(c)MaximumMSSIMimage
+(MSSIM=0:9337).(d)MinimumMSSIMimage(MSSIM=(cid:0)0:5411).
+MSSIMimage,insomecasesreversingcontrast.
+B. TestonJPEGandJPEG2000ImageDatabase converted to Z-scores [54]) and then the entire data set was
+We compare the cross-distortion and cross-image perfor- rescaled to fill the range from 1 to 100. Mean opinion scores
+mances of different quality assessment models on an image (MOSs) were then computed for each image, after removing
+database composed of JPEG and JPEG2000 compressed outliers (most subjects had no outliers). The average standard
+images. Twenty-nine high-resolution 24 bits/pixel RGB color deviations (for each image) of the subjective scores for JPEG,
+images(typically768 512orsimilarsize)werecompressed JPEG2000, and all images were 6.00, 7.33, and 6.65, respec-
+at a range of quality levels using either JPEG or JPEG2000, tively. The image database, together with the subjective score
+producing a total of 175 JPEG images and 169 JPEG2000 andstandarddeviationforeachimage,hasbeenmadeavailable
+images. The bit rates were in the range of 0.150 to 3.336 ontheInternetat[55].
+and 0.028 to 3.150 bits/pixel, respectively, and were chosen The luminance component of each JPEG and JPEG2000
+nonuniformly such that the resulting distribution of subjective compressed image is averaged over local 2 2 window and
+qualityscoreswasapproximatelyuniformovertheentirerange. downsampled by a factor of 2 before the MSSIM value is
+Subjectsviewedtheimagesfromcomfortableseatingdistances calculated.Ourexperimentswiththecurrentdatasetshowthat
+(this distance was only moderately controlled, to allow the the use of the other color components does not significantly
+data to reflect natural viewing conditions), and were asked to change the performance of the model, though this should not
+providetheirperceptionofqualityonacontinuouslinearscale be considered generally true for color image quality assess-
+thatwasdividedintofiveequalregionsmarkedwithadjectives ment. Unlike many other perceptual image quality assessment
+“Bad,” “Poor,” “Fair,” “Good,” and “Excellent.” Each JPEG approaches,nospecifictrainingprocedure isemployed before
+and JPEG2000 compressed image was viewed by 13 20 applying the proposed algorithm to the database, because the
+subjectsand25subjects,respectively.Thesubjectsweremostly proposedmethodisintendedforgeneral-purposeimagequality
+malecollegestudents. assessment(asopposedtoimagecompressionalone).
+Raw scores for each subject were normalized by the mean Figs.6and7showsomeexampleimagesfromthedatabase
+and variance of scores for that subject (i.e., raw values were atdifferentqualitylevels,togetherwiththeirSSIMindexmaps
+
+=== Page 9 ===
+608 IEEETRANSACTIONSONIMAGEPROCESSING,VOL.13,NO.4,APRIL2004
+(a) (b) (c)
+(d) (e) (f)
+(g) (h) (i)
+(j) (k) (l)
+Fig.6. SampleJPEGimagescompressedtodifferentqualitylevels(originalsize:768(cid:2)512;croppedto256(cid:2)192forvisibility).Theoriginal(a)“Buildings,
+”(b)“Ocean,”and(c)“Monarch”images.(d)Compressedto0.2673bits/pixel,PSNR=21:98dB,MSSIM=0:7118.(e)Compressedto0.2980bits/pixel,
+PSNR =30:87dB,MSSIM =0:8886.(f)Compressedto0.7755bits/pixel,PSNR =36:78dB,MSSIM =0:9898.(g),(h)and(i)showSSIMmapsof
+thecompressedimages,wherebrightnessindicatesthemagnitudeofthelocalSSIMindex(squaredforvisibility).(j),(k)and(l)showabsoluteerrormapsofthe
+compressedimages(contrast-invertedforeasiercomparisontotheSSIMmaps).
+and absolute error maps. Note that at low bit rate, the coarse poorqualityregions.Alsonoticethatforimageswithintensive
+quantization in JPEG and JPEG2000 algorithms often results strongedgestructuressuchasFig.7(c),itisdifficulttoreduce
+in smooth representations of fine-detail regions in the image thepointwiseerrorsinthecompressedimage,evenatrelatively
+[e.g.,thetilesinFig.6(d)andthetreesinFig.7(d)].Compared high bit rate, as exemplified by Fig. 7(l). However, the com-
+with other types of regions, these regions may not be worse pressed image supplies acceptable perceived quality as shown
+intermsofpointwisedifferencemeasuressuchastheabsolute in Fig. 7(f). In fact, although the visual quality of Fig. 7(f) is
+error. However, since the structural information of the image betterthanFig.7(e),itsabsoluteerrormapFig.7(l)appearsto
+details are nearly completely lost, they exhibit poorer visual beworsethanFig.7(k),asisconfirmedbytheirPSNRvalues.
+quality.ComparingFig.6(g)withFig.6(j),andFig.7(g)with TheSSIMindexmapsFigs.7(h)and7(i)deliverbetterconsis-
+6(j),weobservethattheSSIMindexisbetterincapturingsuch tencywithperceivedqualitymeasurement.
+
+=== Page 10 ===
+WANGetal.:IMAGEQUALITYASSESSMENT:FROMERRORVISIBILITYTOSSIM 609
+(a) (b) (c)
+(d) (e) (f)
+(g) (h) (i)
+(j) (k) (l)
+Fig. 7. Sample JPEG2000 images compressed to different quality levels (original size: 768 (cid:2) 512; cropped to 256 (cid:2) 192 for visibility). The original
+(a)“Stream,”(b)“Caps,”and(c)“Bikes”images,respectively.(d)Compressedto0.1896bits/pixel,PSNR=23:46dB,MSSIM=0:7339.(e)Compressed
+to0.1982bits/pixel,PSNR =34:56dB,MSSIM = 0:9409.(f)Compressedto1.1454bits/pixel,PSNR =33:47dB,MSSIM =0:9747.(g),(h)and(i)
+showSSIMmapsofthecompressedimages,wherebrightnessindicatesthemagnitudeofthelocalSSIMindex(squaredforvisibility).(j),(k)and(l)show
+absoluteerrormapsofthecompressedimages(contrast-invertedforeasiercomparisontotheSSIMmaps).
+Thequalityassessmentmodelsusedforcomparisoninclude Sarnoff model) were reported to be statistically equivalent to
+PSNR, the well-knownSarnoff model,2 UQI[7] and MSSIM. rootmeansquarederror[57]andPSNR[58].TheUQImethod
+The scatter plot of MOS versus model prediction for each performsmuchbetterthanMSEforthesimplecross-distortion
+modelisshowninFig.8.IfPSNRisconsideredasabenchmark test in [7], [8], but does not deliver satisfactory results in
+methodtoevaluatetheeffectivenessoftheotherimagequality Fig.8.Wethinkthemajorreasonisthatatnearlyflatregions,
+metrics,theSarnoffmodelperformsquitewellinthistest.This the denominator of the contrast comparison formula is close
+is in contrast with previous published test results (e.g., [57], to zero, which makes the algorithm unstable. By inserting
+[58]), where the performance of most models (including the the small constants and , MSSIM completely avoids
+this problem and the scatter slot demonstrates that it supplies
+2Available at http://www.sarnoff.com/products_services/video_viseon/jnd-
+remarkablygoodpredictionofthesubjectivescores.
+metrix/.
+
+=== Page 11 ===
+610 IEEETRANSACTIONSONIMAGEPROCESSING,VOL.13,NO.4,APRIL2004
+100
+90
+80
+70
+60
+50
+40
+30
+20
+10
+0
+15 20 25 30 35 40 45 50
+PSNR
+SOM
+100
+JPEG images
+JPEG2000 images 90
+Fitting with Logistic Function
+80
+70
+60
+50
+40
+30
+20
+10
+0
+0 2 4 6 8 10 12
+Sarnoff
+(a)
+SOM
+JPEG images
+JPEG2000 images
+Fitting with Logistic Function
+(b)
+100
+90
+80
+70
+60
+50
+40
+30
+20
+10
+0
+0 0.2 0.4 0.6 0.8 1
+UQI
+SOM
+100
+JPEG images
+JPEG2000 images 90
+Fitting with Logistic Function
+80
+70
+60
+50
+40
+30
+20
+10
+0
+0.4 0.5 0.6 0.7 0.8 0.9 1
+MSSIM
+(c)
+SOM
+JPEG images
+JPEG2000 images
+Fitting with Logistic Function
+(d)
+Fig.8. Scatterplotsofsubjectivemeanopinionscore(MOS)versusmodelprediction.Eachsamplepointrepresentsonetestimage.(a)PSNR.(b)Sarnoffmodel
+(usingSarnoffJNDmetrix8.0[55]).(c)UQI[7](equivalenttoMSSIMwithsquarewindowandK = K = 0).d)MSSIM(Gaussianwindow,K =0:01;
+K = 0:03).
+Inordertoprovidequantitativemeasuresontheperformance evaluationresultsforallthemodelsbeingcomparedaregivenin
+oftheobjectivequalityassessmentmodels,wefollowtheper- TableI.Foreveryoneofthesecriteria,MSSIMperformsbetter
+formanceevaluationproceduresemployedinthevideoquality thanalloftheothermodelsbeingcompared.
+experts group (VQEG) Phase I FR-TV test [58], where four
+evaluationmetricswereused.First,logisticfunctionsareused
+inafittingprocedure toprovideanonlinearmappingbetween V. DISCUSSION
+the objective/subjectivescores. The fitted curves are shown in
+In this paper, we have summarized the traditional approach
+Fig. 8. In [58], Metric 1 is the correlation coefficient between
+toimagequalityassessmentbasedonerror-sensitivity,andhave
+objective/subjective scores after variance-weighted regression
+enumerateditslimitations.Wehaveproposedtheuseofstruc-
+analysis.Metric2isthecorrelationcoefficientbetweenobjec-
+turalsimilarityasanalternativemotivatingprincipleforthede-
+tive/subjectivescoresafternonlinearregressionanalysis.These
+sign of image quality measures. To demonstrate our structural
+twometricscombined,provideanevaluationofpredictionac-
+similarity concept, we developed an SSIM index and showed
+curacy.ThethirdmetricistheSpearmanrank-ordercorrelation
+that it compares favorably with other methods in accounting
+coefficientbetweentheobjective/subjectivescores.Itisconsid-
+eredasameasureofpredictionmonotonicity.Finally,metric4is forourexperimentalmeasurementsofsubjectivequalityof344
+theoutlierratio(percentageofthenumberofpredictionsoutside JPEGandJPEG2000compressedimages.
+therangeof 2timesofthestandarddeviations)ofthepredic- Although the proposed SSIM index method is motivated
+tionsafterthenonlinearmapping,whichisameasureofpredic- from substantially different design principles, we see it as
+tionconsistency.Moredetailsonthesemetricscanbefoundin complementary to the traditional approach. Careful analysis
+[58].Inadditiontothese,wealsocalculatedthemeanabsolute showsthatboththeSSIMindexandseveralrecentlydeveloped
+predictionerror(MAE),androotmeansquarepredictionerror divisive-normalizationbasedmaskingmodelsexhibitinput-de-
+(rms) after nonlinear regression, and weighted mean absolute pendent behavior in measuring signal distortions [45], [46],
+predictionerror(WMAE)andweightedrootmeansquarepre- [48].Itseemspossiblethatthetwoapproachesmayeventually
+dictionerror(WRMS)aftervariance-weightedregression.The convergetosimilarsolutions.
+
+=== Page 12 ===
+WANGetal.:IMAGEQUALITYASSESSMENT:FROMERRORVISIBILITYTOSSIM 611
+TABLE I
+PERFORMANCECOMPARISONOFIMAGEQUALITYASSESSMENTMODELS.CC:CORRELATIONCOEFFICIENT;MAE:MEANABSOLUTEERROR;RMS:ROOTMEAN
+SQUAREDERROR;OR:OUTLIERRATIO;WMAE:WEIGHTEDMEANABSOLUTEERROR;WRMS:WEIGHTEDROOTMEANSQUARED
+ERROR;SROCC:SPEARMANRANK-ORDERCORRELATIONCOEFFICIENT
+Thereareanumberofissuesthatareworthinvestigationwith [8] Z. Wang. Demo Images and Free Software for ‘a Universal
+regardtothespecificSSIMindexof(12).First,theoptimization Image Quality Index’. [Online] Available: http://anchovy.ece.
+utexas.edu/~zwang/research/quality_index/demo.html
+of the SSIM index for various image processing algorithms
+[9] Z.Wang,A.C.Bovik,andL.Lu,“Whyisimagequalityassessmentso
+needs to be studied. For example, it may be employed for difficult,”inProc.IEEEInt.Conf.Acoustics,Speech,andSignalPro-
+rate-distortionoptimizationsinthedesignofimagecompression cessing,vol.4,Orlando,FL,May2002,pp.3313–3316.
+[10] J.L.MannosandD.J.Sakrison,“Theeffectsofavisualfidelitycriterion
+algorithms.Thisisnotaneasytasksince(12)ismathematically
+ontheencodingofimages,”IEEETrans.Inform.Theory,vol.IT-4,pp.
+more cumbersome than MSE. Second, the application scope 525–536,1974.
+[11] T. N. Pappas and R. J. Safranek, “Perceptual criteria for image
+of the SSIM index may not be restricted to image processing.
+qualityevaluation,”inHandbookofImageandVideoProc.,A.Bovik,
+In fact, because it is a symmetric measure, it can be thought Ed. NewYork:Academic,2000.
+ofasasimilaritymeasureforcomparinganytwosignals.The [12] Z.Wang,H.R.Sheikh,andA.C.Bovik,“Objectivevideoqualityassess-
+ment,”inTheHandbookofVideoDatabases:DesignandApplications,
+signals can be either discrete or continuous, and can live in
+B.FurhtandO.Marques,Eds. BocaRaton,FL:CRCPress,2003.
+a space of arbitrary dimensionality. [13] S.Winkler,“Issuesinvisionmodelingforperceptualvideoqualityas-
+WeconsidertheproposedSSIMindexingapproachasapar- sessment,”SignalProcessing,vol.78,pp.231–252,1999.
+[14] A.B.PoirsonandB.A.Wandell,“Appearanceofcoloredpatterns:pat-
+ticularimplementationofthephilosophyofstructuralsimilarity,
+tern-colorseparability,”J.Opt.Soc.Amer.A:Opt.ImageSci.,vol.10,
+from an image formation point of view. Under the same phi- no.12,pp.2458–2470,1993.
+losophy, other approaches may emerge that could be signifi- [15] A.B.Watson,“Thecortextransform:rapidcomputationofsimulated
+neural images,” Comput. Vis., Graph., Image Process., vol. 39, pp.
+cantly different from the proposed SSIM indexing algorithm.
+311–327,1987.
+Creativeinvestigationoftheconceptsofstructuralinformation [16] S.Daly,“Thevisibledifferencepredictor:analgorithmfortheassess-
+ment of image fidelity,” in Digital Imagesand HumanVision, A.B.
+andstructuraldistortionarelikelytodrivethesuccessofthese
+Watson,Ed. Cambridge,MA:MITPress,1993,pp.179–206.
+innovations. [17] J.Lubin,“Theuseofpsychophysicaldataandmodelsintheanalysisof
+displaysystemperformance,”inDigitalImagesandHumanVision,A.
+B.Watson,Ed. Cambridge,MA:MITPress,1993,pp.163–178.
+ACKNOWLEDGMENT [18] D.J.HeegerandP.C.Teo,“Amodelofperceptualimagefidelity,”in
+Proc.IEEEInt.Conf.ImageProcessing,1995,pp.343–345.
+The authors would like to thank Dr. J. Malo and Dr. Lu for [19] E. P. Simoncelli, W. T. Freeman, E. H. Adelson, and D. J. Heeger,
+“Shiftable multi-scale transforms,” IEEE Trans. Inform. Theory, vol.
+insightful comments, Dr. J. Lubin and Dr. D. Dixon for pro-
+38,pp.587–607,1992.
+viding the Sarnoff JNDmetrix software, Dr. P. Corriveau and [20] A.B.Watson,“DCTquantizationmatricesvisuallyoptimizedforindi-
+Dr.J.LibertforsupplyingtheroutinesusedinVQEGPhaseI vidualimages,”inProc.SPIE,vol.1913,1993.
+[21] A. B. Watson, J. Hu, and J. F. McGowanIII, “DVQ: a digital video
+FR-TV test for the regression analysis of subjective/objective
+qualitymetricbasedonhumanvision,”J.Electron.Imaging,vol.10,
+datacomparison,andVisualDelights,Inc.forallowingtheau- no.1,pp.20–29,2001.
+thorstousetheirimagesforsubjectiveexperiments. [22] A.B.Watson,G.Y.Yang,J.A.Solomon,andJ.Villasenor,“Visibility
+ofwaveletquantizationnoise,”IEEETrans.ImageProcessing,vol.6,
+pp.1164–1175,Aug.1997.
+[23] A. P. Bradley, “A wavelet visible difference predictor,” IEEE Trans.
+REFERENCES
+ImageProcessing,vol.5,pp.717–730,May1999.
+[24] Y.K.LaiandC.-C.J.Kuo,“AHaarwaveletapproachtocompressed
+[1] B.Girod,“What’swrongwithmean-squarederror,”inDigitalImages
+andHumanVision,A.B.Watson,Ed. Cambridge,MA:MITPress, imagequalitymeasurement,”J.Vis.Commun.ImageRepres.,vol.11,
+1993,pp.207–220. pp.17–40,Mar.2000.
+[2] P.C.TeoandD.J.Heeger,“Perceptualimagedistortion,”inProc.SPIE, [25] C.J.vandenBrandenLambrechtandO.Verscheure,“Perceptualquality
+vol.2179,1994,pp.127–141. measureusingaspatio-temporalmodelofthehumanvisualsystem,”in
+[3] A.M.EskiciogluandP.S.Fisher,“Imagequalitymeasuresandtheirper- Proc.SPIE,vol.2668,1996,pp.450–461.
+formance,”IEEETrans.Commun.,vol.43,pp.2959–2965,Dec.1995. [26] A.B.WatsonandJ.A.Solomon,“Modelofvisualcontrastgaincontrol
+[4] M.P.EckertandA.P.Bradley,“Perceptualqualitymetricsappliedto andpatternmasking,”J.Opt.Soc.Amer.,vol.14,no.9,pp.2379–2391,
+stillimagecompression,”SignalProcessing,vol.70,pp.177–200,Nov. 1997.
+1998. [27] W.XuandG.Hauske,“Picturequalityevaluationbasedonerrorseg-
+[5] S.Winkler,“Aperceptualdistortionmetricfordigitalcolorvideo,”in mentation,”inProc.SPIE,vol.2308,1994,pp.1454–1465.
+Proc.SPIE,vol.3644,1999,pp.175–184. [28] W. Osberger, N. Bergmann, and A. Maeder, “An automatic image
+[6] Z.Wang,“RatescalableFoveatedimageandvideocommunications,” quality assessment technique incorporating high level perceptual
+Ph.D.dissertation,Dept.Elect.Comput.Eng.,Univ.TexasatAustin, factors,”inProc.IEEEInt.Conf.ImageProcessing,1998,pp.414–418.
+Austin,TX,Dec.2001. [29] D.A.SilversteinandJ.E.Farrell,“Therelationshipbetweenimagefi-
+[7] Z. Wang and A. C. Bovik, “A universalimage quality index,” IEEE delityandimagequality,”inProc.IEEEInt.Conf.ImageProcessing,
+SignalProcessingLetters,vol.9,pp.81–84,Mar.2002. 1996,pp.881–884.
+
+=== Page 13 ===
+612 IEEETRANSACTIONSONIMAGEPROCESSING,VOL.13,NO.4,APRIL2004
+[30] D.R.Fuhrmann,J.A.Baro,andJ.R.CoxJr.,“Experimentalevalua- [56] J.Lubin,“Avisualdiscriminationmodelforimagingsystemdesignand
+tionofpsychophysicaldistortionmetricsforJPEG-encodedimages,”J. evaluation,”inVisualModelsforTargetDetectionandRecognition,E.
+Electron.Imaging,vol.4,pp.397–406,Oct.1995. Peli,Ed. Singapore:WorldScientific,1995,pp.245–283.
+[31] A. B. Watson and L. Kreslake, “Measurement of visual impairment [57] J.-B.MartensandL.Meesters,“Imagedissimilarity,”SignalProcessing,
+scales for digital video,” in Proc. SPIE—Human Vision, Visual Pro- vol.70,pp.155–176,Nov.1998.
+cessing,andDigitalDisplay,,vol.4299,2001. [58] VQEG. (2000, Mar.) Final Report From the Video Quality Experts
+[32] J. G. Ramos and S. S. Hemami, “Suprathreshold wavelet coefficient GroupontheValidationofObjectiveModelsofVideoQualityAssess-
+quantizationincomplexstimuli:psychophysicalevaluationandanal- ment.[Online]Available:http://www.vqeg.org/
+ysis,”J.Opt.Soc.Amer.A,vol.18,pp.2385–2397,2001.
+[33] D. M. Chandler and S. S. Hemami, “Additivity models for
+suprathreshold distortion in quantized wavelet-coded images,” in
+Proc.SPIE—HumanVisionandElectronicImagingVII,vol.4662,Jan. ZhouWang(S’97–A’01–M’02)receivedtheB.S.degreefromHuazhongUni-
+2002. versityofScienceandTechnology,Wuhan,China,in1993,theM.S.degree
+[34] J.Xing,“Animageprocessingmodelofcontrastperceptionanddis- fromSouthChinaUniversityofTechnology,Guangzhou,China,in1995,and
+criminationofthehumanvisualsystem,”inSIDConf.,Boston,MA, thePh.D.degreefromTheUniversityofTexasatAustinin2001.
+May2002. HeiscurrentlyaResearchAssociateatHowardHughesMedicalInstituteand
+[35] A.B.Watson,“Visualdetectionofspatialcontrastpatterns:evaluation LaboratoryforComputationalVision,NewYorkUniversity.Previously,hewas
+offivesimplemodels,”Opt.Exp.,vol.6,pp.12–33,Jan.2000. aResearchEngineeratAutoQuantImaging,Inc.,Watervliet,NY.From1998to
+[36] E.P.Simoncelli,“Statisticalmodelsforimages:compression,restora- 2001,hewasaResearchAssistantattheLaboratoryforImageandVideoEn-
+tionandsynthesis,”inProc31stAsilomarConf.Signals,Systemsand gineering,UniversityofTexasatAustin.Inthesummersof2000and2001,he
+Computers,PacificGrove,CA,Nov.1997,pp.673–678. waswithMultimediaTechnologies,IBMT.J.WatsonResearchCenter,York-
+[37] J.LiuandP.Moulin,“Information-theoreticanalysisofinterscaleand townHeights,NY.HeworkedasaResearchAssistantinperiodsduring1996to
+intrascale dependencies between image wavelet coefficients,” IEEE 1998attheDepartmentofComputerScience,CityUniversityofHongKong,
+Trans.ImageProcessing,vol.10,pp.1647–1658,Nov.2001. China.Hiscurrentresearchinterestsincludedigitalimageandvideocoding,
+[38] J. M. Shapiro,“Embedded image coding using zerotrees of wavelets processingandqualityassessment,andcomputationalvision.
+coefficients,”IEEETrans.SignalProcessing,vol.41,pp.3445–3462,
+Dec.1993.
+[39] A.SaidandW.A.Pearlman,“Anew,fast,andefficientimagecodec
+AlanConradBovik(S’81–M’81–SM’89–F’96)iscurrentlytheCullenTrust
+based on set partitioning in hierarchical trees,” IEEE Trans. Circuits
+forHigherEducationEndowedProfessorintheDepartmentofElectricaland
+Syst.VideoTechnol.,vol.6,pp.243–250,June1996.
+ComputerEngineering,UniversityofTexasatAustin,whereheistheDirector
+[40] R.W.BuccigrossiandE.P.Simoncelli,“Imagecompressionviajoint
+oftheLaboratoryforImageandVideoEngineering(LIVE)intheCenterfor
+statisticalcharacterizationinthewaveletdomain,”IEEETrans.Image
+PerceptualSystems.DuringtheSpringof1992,heheldavisitingpositioninthe
+Processing,vol.8,pp.1688–1701,Dec.1999.
+DivisionofAppliedSciences,HarvardUniversity,Cambridge,MA.Hiscurrent
+[41] D.S.TaubmanandM.W.Marcellin,JPEG2000:ImageCompression
+researchinterestsincludedigitalvideo,imageprocessing,andcomputational
+Fundamentals,Standards,andPractice. Norwell,MA:Kluwer,2001.
+aspectsofbiologicalvisualperception.Hehaspublishednearly400technical
+[42] J.M.FoleyandG.M.Boynton,“Anewmodelofhumanluminance
+articlesintheseareasandholdstwoU.S.patents.Heisalsotheeditor/author
+patternvisionmechanisms:analysisoftheeffectsofpatternorientation,
+oftheHandbookofImageandVideoProcessing(NewYork:Academic,2000).
+spatialphase,andtemporalfrequency,”inProc.SPIE—Computational
+HeisaregisteredProfessionalEngineerintheStateofTexasandisafrequent
+VisionBasedonNeurobiology,vol.2054,T.A.Lawton,Ed.,1994.
+consultanttolegal,industrial,andacademicinstitutions.
+[43] O.SchwartzandE.P.Simoncelli,“Naturalsignalstatisticsandsensory
+Dr.BovikwasnamedDistinguishedLectureroftheIEEESignalProcessing
+gaincontrol,”Nature:Neuroscience,vol.4,pp.819–825,Aug.2001.
+Societyin2000,receivedtheIEEESignalProcessingSocietyMeritoriousSer-
+[44] M.J.Wainwright,O.Schwartz,andE.P.Simoncelli,“Naturalimage
+viceAwardin1998,theIEEEThirdMillenniumMedalin2000,theUniversity
+statisticsanddivisivenormalization:modelingnonlinearityandadap-
+ofTexasEngineeringFoundationHalliburtonAwardin1991,andisatwo-time
+tationincorticalneurons,”inProbabilisticModelsoftheBrain:Per-
+Honorable Mention winner of the international Pattern Recognition Society
+ceptionandNeuralFunction,R.Rao,B.Olshausen,andM.Lewicki,
+AwardforOutstandingContribution(1988and1993).HewasnamedaDean’s
+Eds. Cambridge,MA:MITPress,2002.
+FellowintheCollegeofEngineeringintheYear2001.Hehasbeeninvolved
+[45] J.Malo,R.Navarro,I.Epifanio,F.Ferri,andJ.M.Artigas,“Non-linear
+innumerousprofessionalsocietyactivities,includingtheBoardofGovernors
+invertiblerepresentationforjointstatisticalandperceptualfeaturedecor-
+for the IEEE Signal Processing Society (1996–1998), Editor-in-Chief of
+relation,”LectureNotesonComputerScience,vol.1876,pp.658–667,
+IEEE TRANSACTIONS ON IMAGE PROCESSING (1996–2002), member of the
+2000.
+Editorial Board for The PROCEEDINGS OF THE IEEE (1998-present), and
+[46] I.Epifanio,J.Gutiérrez,andJ.Malo,“Lineartransformforsimultaneous
+Founding General Chairman for the 1st IEEE International Conference on
+diagonalization of covariance and perceptual metric matrix in image
+ImageProcessing,heldinAustin,TX,in1994.
+coding,”PatternRecognit.,vol.36,pp.1799–1811,Aug.2003.
+[47] W. F. Good, G. S. Maitz, and D. Gur, “Joint photographic experts
+group(JPEG)compatibledatacompressionofmammograms,”J.Dig.
+Imaging,vol.17,no.3,pp.123–132,1994. Hamid Rahim Sheikh (S’04) received the B.Sc. degree in electrical engi-
+[48] A.Pons,J.Malo,J.M.Artigas,andP.Capilla,“Imagequalitymetric neeringfromtheUniversityofEngineeringandTechnology,Lahore,Pakistan,
+basedonmultidimensionalcontrastperceptionmodels,”Displays,vol. andtheM.S.degreeinengineeringfromtheUniversityofTexasatAustinin
+20,pp.93–110,1999. May2001,whereheiscurrentlypursuingthePh.D.degree.
+[49] W.S.GeislerandM.S.Banks,“Visualperformance,”inHandbookof His research interests include using natural scene statistical models and
+Optics,M.Bass,Ed. NewYork:McGraw-Hill,1995. humanvisualsystemmodelsforimageandvideoqualityassessment.
+[50] Z.WangandA.C.Bovik,“Embeddedfoveationimagecoding,”IEEE
+Trans.ImageProcessing,vol.10,pp.1397–1410,Oct.2001.
+[51] C. M. Privitera and L. W. Stark, “Algorithms for defining visual re-
+gions-of-interest:comparisonwitheyefixations,”IEEETrans.Pattern EeroP.Simoncelli(S’92–M’93–SM’04)receivedtheB.S.degreeinphysicsin
+Anal.MachineIntell.,vol.22,pp.970–982,Sept.2000. 1984fromHarvardUniversity,Cambridge,MA,acertificateofadvancedstudy
+[52] U.Rajashekar,L.K.Cormack,andA.C.Bovik,“Imagefeaturesthat inmathematicsin1986fromCambridgeUniversity,Cambridge,U.K.,andthe
+drawfixations,”inProc.IEEEInt.Conf.ImageProcessing,Barcelona, M.S.andPh.D.degreesin1988and1993,bothinelectricalengineering,from
+Spain,Sept.2003. theMassachusettsInstituteofTechnology,Cambridge,MA.
+[53] Z. Wang. The SSIM Index for Image Quality Assessment. [Online] He was an Assistant Professor in the Computer and Information Science
+Available:http://www.cns.nyu.edu/~lcv/ssim/ EepartmentattheUniversityofPennsylvaniafrom1993to1996.Hemoved
+[54] A.M.vanDijk,J.B.Martens,andA.B.Watson,“Qualityassessment toNewYorkUniversityinSeptember1996,whereheiscurrentlyanAssociate
+ofcodedimagesusingnumericalcategoryscaling,”inProc.SPIE,vol. ProfessorinNeuralScienceandMathematics.InAugust2000,hebecamean
+2451,1995. AssociateInvestigatorattheHowardHughesMedicalInstitute,undertheirnew
+[55] H.R.Sheikh,Z.Wang,A.C.Bovik,andL.K.Cormack.Imageand programincomputationalbiology.Hisresearchinterestsspanawiderangeof
+Video Quality Assessment Research at LIVE. [Online] Available: topicsintherepresentationandanalysisofvisualimages,inbothmachineand
+http://live.ece.utexas.edu/research/quality/ biologicalvisionsystems.

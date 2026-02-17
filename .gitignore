@@ -1,0 +1,6 @@
+﻿out_rawdata_autoroi/
+debug_inspect/
+__pycache__/
+*.pyc
+*.pyo
+.claude/
