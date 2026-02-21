@@ -54,6 +54,10 @@ python crack_analyze.py --config config.yaml [--input_dir ...] [--output_dir ...
   - `roi.auto.min_inliers`: lower if angle changes are large and matching fails
   - `roi.auto.search_ratio/search_steps/scales`: controls local recentering strength
   - `out/_run/roi_overrides.json`: inspect per-video ROI, source, match stats
+- YOLO training size alignment:
+  - set `frame_extraction.crop_resize: [640, 640]`
+  - keep aspect ratio with `frame_extraction.crop_resize_mode: letterbox` (recommended)
+  - use `frame_extraction.crop_resize_mode: stretch` if you want hard resize without padding
 
 ## Notes
 - `flow` is reserved for v2 and intentionally blocked in MVP.

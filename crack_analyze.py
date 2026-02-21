@@ -54,6 +54,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "search_ratio": 0.18,
             "search_steps": 7,
             "scales": [0.9, 1.0, 1.1],
+            "post_shift_mode": "fixed",
+            "post_shift_ratio": [0.0, 0.0],
+            "post_shift_px": [0, 0],
+            "post_shift_target_x": 0.48,
+            "post_shift_min_ratio": 0.01,
+            "post_shift_min_pixels": 120,
+            "post_shift_max_abs_ratio": 0.35,
+            "post_shift_direction": "left_only",
+            "post_shift_fallback": "none",
         },
     },
     "segment_detection": {
@@ -82,6 +91,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "jpg_quality_q": 2,
         "keep_full_frames": False,
         "crop_output": True,
+        "crop_resize": None,
+        "crop_resize_mode": "letterbox",
+        "crop_resize_pad_value": 114,
     },
     "report": {
         "enable_html": True,
@@ -323,6 +335,36 @@ def to_rect4(values: Any) -> list[float] | None:
     return rect
 
 
+def to_vec2(values: Any) -> tuple[float, float] | None:
+    if not isinstance(values, (list, tuple)) or len(values) != 2:
+        return None
+    try:
+        x = float(values[0])
+        y = float(values[1])
+    except (TypeError, ValueError):
+        return None
+    return x, y
+
+
+def copper_mask_stats(crop: np.ndarray) -> dict[str, Any]:
+    if crop.size == 0:
+        return {"ratio": 0.0, "pixels": 0, "cx": None, "cy": None}
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(
+        hsv,
+        np.array([5, 50, 40], dtype=np.uint8),
+        np.array([35, 255, 255], dtype=np.uint8),
+    )
+    pixels = int(np.count_nonzero(mask))
+    ratio = float(np.mean(mask > 0))
+    if pixels < 30:
+        return {"ratio": ratio, "pixels": pixels, "cx": None, "cy": None}
+    ys, xs = np.where(mask > 0)
+    cx = float(np.mean(xs) / max(1.0, crop.shape[1] - 1.0))
+    cy = float(np.mean(ys) / max(1.0, crop.shape[0] - 1.0))
+    return {"ratio": ratio, "pixels": pixels, "cx": cx, "cy": cy}
+
+
 def roi_from_norm(rect_norm: list[float], width: int, height: int) -> list[int]:
     x = int(round(rect_norm[0] * width))
     y = int(round(rect_norm[1] * height))
@@ -392,6 +434,100 @@ def clip_rect_silent(rect: list[int], width: int, height: int) -> list[int]:
     x1 = max(x0 + 1, min(x + w, width))
     y1 = max(y0 + 1, min(y + h, height))
     return [x0, y0, x1 - x0, y1 - y0]
+
+
+def shift_rect_keep_size(rect: list[int], dx: int, dy: int, width: int, height: int) -> list[int]:
+    x, y, w, h = [int(v) for v in rect]
+    w = max(1, min(int(w), int(width)))
+    h = max(1, min(int(h), int(height)))
+    max_x = max(0, int(width) - w)
+    max_y = max(0, int(height) - h)
+    nx = min(max(0, int(x) + int(dx)), max_x)
+    ny = min(max(0, int(y) + int(dy)), max_y)
+    return [nx, ny, w, h]
+
+
+def resolve_post_shift(
+    frame: np.ndarray,
+    rect: list[int],
+    auto_cfg: dict[str, Any],
+) -> tuple[int, int, dict[str, Any]]:
+    shift_mode = str(auto_cfg.get("post_shift_mode", "fixed")).strip().lower()
+    shift_ratio = to_vec2(auto_cfg.get("post_shift_ratio")) or (0.0, 0.0)
+    shift_px = to_vec2(auto_cfg.get("post_shift_px")) or (0.0, 0.0)
+    w = max(1, int(rect[2]))
+    h = max(1, int(rect[3]))
+
+    dy = int(round(float(h) * float(shift_ratio[1]) + float(shift_px[1])))
+    if shift_mode in ("none", "off", "disabled", ""):
+        return 0, dy, {"mode": "none"}
+
+    if shift_mode == "fixed":
+        dx_fixed = int(round(float(w) * float(shift_ratio[0]) + float(shift_px[0])))
+        return (
+            dx_fixed,
+            dy,
+            {
+                "mode": "fixed",
+                "ratio": [float(shift_ratio[0]), float(shift_ratio[1])],
+                "px": [int(round(shift_px[0])), int(round(shift_px[1]))],
+            },
+        )
+
+    if shift_mode not in ("adaptive", "adaptive_copper"):
+        raise PipelineError("roi.auto.post_shift_mode must be one of: fixed|adaptive_copper|none")
+
+    x, y = int(rect[0]), int(rect[1])
+    crop = frame[y : y + h, x : x + w]
+    stats = copper_mask_stats(crop)
+    target_x = float(auto_cfg.get("post_shift_target_x", 0.48))
+    min_ratio = float(auto_cfg.get("post_shift_min_ratio", 0.01))
+    min_pixels = max(1, int(auto_cfg.get("post_shift_min_pixels", 120)))
+    max_abs_ratio = max(0.0, float(auto_cfg.get("post_shift_max_abs_ratio", 0.35)))
+    max_abs_px = int(round(max_abs_ratio * w))
+    direction = str(auto_cfg.get("post_shift_direction", "left_only")).strip().lower()
+    fallback = str(auto_cfg.get("post_shift_fallback", "none")).strip().lower()
+
+    adaptive_ok = (
+        stats.get("cx") is not None
+        and float(stats.get("ratio", 0.0)) >= min_ratio
+        and int(stats.get("pixels", 0)) >= min_pixels
+    )
+    if adaptive_ok:
+        # If copper appears too far left in crop (cx < target), move ROI left (negative dx).
+        raw_dx = int(round((float(stats["cx"]) - target_x) * w))
+        if direction == "left_only":
+            raw_dx = min(0, raw_dx)
+        elif direction == "right_only":
+            raw_dx = max(0, raw_dx)
+        elif direction not in ("both", "any"):
+            raise PipelineError("roi.auto.post_shift_direction must be one of: left_only|right_only|both")
+        dx = int(np.clip(raw_dx, -max_abs_px, max_abs_px))
+    elif fallback == "fixed":
+        dx = int(round(float(w) * float(shift_ratio[0]) + float(shift_px[0])))
+    else:
+        dx = int(round(float(shift_px[0])))
+
+    return (
+        dx,
+        dy,
+        {
+            "mode": "adaptive_copper",
+            "adaptive_ok": bool(adaptive_ok),
+            "target_x": float(target_x),
+            "min_ratio": float(min_ratio),
+            "min_pixels": int(min_pixels),
+            "max_abs_ratio": float(max_abs_ratio),
+            "direction": direction,
+            "fallback": fallback,
+            "copper_ratio": float(stats.get("ratio", 0.0)),
+            "copper_pixels": int(stats.get("pixels", 0)),
+            "copper_cx": None if stats.get("cx") is None else float(stats["cx"]),
+            "copper_cy": None if stats.get("cy") is None else float(stats["cy"]),
+            "ratio": [float(shift_ratio[0]), float(shift_ratio[1])],
+            "px": [int(round(shift_px[0])), int(round(shift_px[1]))],
+        },
+    )
 
 
 def transform_rect_with_affine(rect: list[int], matrix: np.ndarray) -> list[int]:
@@ -786,6 +922,22 @@ def resolve_video_roi(
         refined = refine_roi_rect(frame, rect, auto_cfg)
         rect = clip_rect_silent(refined, width, height)
         source = f"{source}+refine"
+
+    # Optional post-shift to compensate systematic composition bias.
+    req_dx, req_dy, shift_details = resolve_post_shift(frame, rect, auto_cfg)
+    if req_dx != 0 or req_dy != 0:
+        prev_rect = [int(v) for v in rect]
+        rect = shift_rect_keep_size(rect, req_dx, req_dy, width, height)
+        applied_dx = int(rect[0] - prev_rect[0])
+        applied_dy = int(rect[1] - prev_rect[1])
+        source = f"{source}+shift"
+        shift_details["dx_req"] = int(req_dx)
+        shift_details["dy_req"] = int(req_dy)
+        shift_details["dx_applied"] = int(applied_dx)
+        shift_details["dy_applied"] = int(applied_dy)
+        shift_details["clamped"] = bool(applied_dx != req_dx or applied_dy != req_dy)
+    details["post_shift"] = shift_details
+
     roi_score = roi_candidate_score(frame, rect)
     details["roi_score"] = float(roi_score)
     details["feature_count"] = 0 if kp is None else int(len(kp))
@@ -1185,6 +1337,83 @@ def image_write(path: Path, image: np.ndarray, ext: str, jpg_q: int) -> None:
         raise PipelineError(f"Failed to write image: {path}")
 
 
+def parse_crop_resize(value: Any) -> tuple[int, int] | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        if value:
+            raise PipelineError("frame_extraction.crop_resize=true is invalid; use int or [w,h]")
+        return None
+    if isinstance(value, (int, float)):
+        size = int(round(float(value)))
+        if size <= 0:
+            raise PipelineError("frame_extraction.crop_resize must be > 0")
+        return size, size
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("", "none", "null", "off"):
+            return None
+        if text.isdigit():
+            size = int(text)
+            if size <= 0:
+                raise PipelineError("frame_extraction.crop_resize must be > 0")
+            return size, size
+        match = re.match(r"^(\d+)\s*[x,]\s*(\d+)$", text)
+        if match:
+            w = int(match.group(1))
+            h = int(match.group(2))
+            if w <= 0 or h <= 0:
+                raise PipelineError("frame_extraction.crop_resize dimensions must be > 0")
+            return w, h
+        raise PipelineError("frame_extraction.crop_resize string must be '640' or '640x640'")
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        try:
+            w = int(round(float(value[0])))
+            h = int(round(float(value[1])))
+        except (TypeError, ValueError) as exc:
+            raise PipelineError("frame_extraction.crop_resize must contain numbers") from exc
+        if w <= 0 or h <= 0:
+            raise PipelineError("frame_extraction.crop_resize dimensions must be > 0")
+        return w, h
+    raise PipelineError("frame_extraction.crop_resize must be null, int, 'WxH', or [w,h]")
+
+
+def resize_crop_image(
+    crop: np.ndarray,
+    target_size: tuple[int, int] | None,
+    mode: str,
+    pad_value: int,
+) -> np.ndarray:
+    if target_size is None:
+        return crop
+    target_w, target_h = target_size
+    src_h, src_w = crop.shape[:2]
+    if src_w == target_w and src_h == target_h:
+        return crop
+
+    interp = cv2.INTER_AREA if target_w < src_w or target_h < src_h else cv2.INTER_LINEAR
+    mode = str(mode).strip().lower()
+    if mode == "stretch":
+        return cv2.resize(crop, (target_w, target_h), interpolation=interp)
+    if mode != "letterbox":
+        raise PipelineError("frame_extraction.crop_resize_mode must be 'letterbox' or 'stretch'")
+
+    scale = min(target_w / max(1.0, float(src_w)), target_h / max(1.0, float(src_h)))
+    new_w = max(1, int(round(src_w * scale)))
+    new_h = max(1, int(round(src_h * scale)))
+    resized = cv2.resize(crop, (new_w, new_h), interpolation=interp)
+
+    fill = int(np.clip(int(pad_value), 0, 255))
+    if crop.ndim == 2:
+        canvas = np.full((target_h, target_w), fill, dtype=crop.dtype)
+    else:
+        canvas = np.full((target_h, target_w, crop.shape[2]), fill, dtype=crop.dtype)
+    x0 = (target_w - new_w) // 2
+    y0 = (target_h - new_h) // 2
+    canvas[y0 : y0 + new_h, x0 : x0 + new_w] = resized
+    return canvas
+
+
 def extraction_points(
     start_sec: float,
     end_sec: float,
@@ -1306,6 +1535,9 @@ def extract_segment(
     if ext == "jpeg":
         ext = "jpg"
     jpg_q = int(frame_cfg.get("jpg_quality_q", 2))
+    crop_resize = parse_crop_resize(frame_cfg.get("crop_resize"))
+    crop_resize_mode = str(frame_cfg.get("crop_resize_mode", "letterbox"))
+    crop_resize_pad_value = int(frame_cfg.get("crop_resize_pad_value", 114))
 
     fine_fps = float(frame_cfg.get("fine_fps", 10.0))
     idx_points, t_points = extraction_points(
@@ -1338,6 +1570,12 @@ def extract_segment(
             if frame_cfg.get("crop_output", True):
                 x, y, w, h = roi_rect
                 crop = frame[y : y + h, x : x + w]
+                crop = resize_crop_image(
+                    crop=crop,
+                    target_size=crop_resize,
+                    mode=crop_resize_mode,
+                    pad_value=crop_resize_pad_value,
+                )
                 crop_abs = crops_dir / frame_name
                 image_write(crop_abs, crop, ext, jpg_q)
                 extracted_crop_abs.append(crop_abs)

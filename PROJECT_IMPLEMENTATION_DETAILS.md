@@ -11,7 +11,7 @@
 5. 当前版本运行现状与注意事项。
 6. 理论参考文献。
 
-文档基于当前代码 `crack_analyze.py` 与当前运行产物目录 `out_rawdata_autoroi/`（48 个视频）编写。
+文档基于当前代码 `crack_analyze.py` 与近期运行产物目录 `out_rawdata_fullcrack2/`（48 个视频，含自适应 ROI 后处理）及 `out_rawdata_autoroi/` 编写。
 
 ---
 
@@ -36,7 +36,7 @@
 ### 1.3 ROI模式
 
 1. `fixed`：固定 ROI。
-2. `auto_per_video`：每视频自动 ROI（ORB 匹配 + 仿射映射 + 局部搜索细化）。
+2. `auto_per_video`：每视频自动 ROI（ORB 匹配 + 仿射映射 + 可选局部细化 + 可选后处理平移）。
 
 `tracking`、`mask_bbox` 尚未在当前代码实现。
 
@@ -49,7 +49,7 @@
 1. `crack_analyze.py`：主程序，包含所有处理流程。
 2. `config.example.yaml`：参数模板。
 3. `config.rawdata.autoroi.yaml`：当前主用全量跑批配置（自动 ROI）。
-4. `config.rawdata.fullcrack.yaml`：增强“完整裂缝过程覆盖”的配置（`segment_strategy=run`）。
+4. `config.rawdata.fullcrack.yaml`：增强“完整裂缝过程覆盖”的配置（`segment_strategy=run` + 自适应 ROI 后处理 + 640 裁剪输出）。
 5. `run_pilot.bat`：5 视频 pilot 入口。
 6. `run_all.bat`：全量入口。
 7. `run_fullcrack.bat`：完整裂缝覆盖配置的一键入口。
@@ -67,7 +67,7 @@
 
 ## 3. 端到端执行链路
 
-主入口 `run()` 的顺序如下（`crack_analyze.py:1549` 起）：
+主入口 `run()` 的顺序如下（`crack_analyze.py` 末尾 `run()` 附近）：
 
 1. 解析 CLI 参数 `parse_args()`。
 2. 加载配置 `load_config()`，再应用 CLI 覆盖 `apply_cli_overrides()`。
@@ -160,6 +160,15 @@ roi:
     scales: [0.9, 1.0, 1.1]
     max_refs: 10
     min_ref_score: 0.45
+    post_shift_mode: fixed | adaptive_copper | none
+    post_shift_ratio: [dx_w_ratio, dy_h_ratio]
+    post_shift_px: [dx_px, dy_px]
+    post_shift_target_x: 0.48
+    post_shift_min_ratio: 0.01
+    post_shift_min_pixels: 120
+    post_shift_max_abs_ratio: 0.35
+    post_shift_direction: left_only | right_only | both
+    post_shift_fallback: none | fixed
 
 segment_detection:
   method: ssim_ref | diff_prev | flow
@@ -186,6 +195,9 @@ frame_extraction:
   jpg_quality_q: 2
   keep_full_frames: false
   crop_output: true
+  crop_resize: null | 640 | [640, 640] | "640x640"
+  crop_resize_mode: letterbox | stretch
+  crop_resize_pad_value: 114
 
 report:
   enable_html: true
@@ -285,8 +297,8 @@ ROI 选择优先顺序（`resolve_roi_rect`）：
 
 1. `video_id`, `video_path`, `width`, `height`
 2. `roi_rect`
-3. `roi_source`（例如 `manual_override`、`auto_per_video:orb:portrait:5+refine`）
-4. `roi_details`（match/inlier/reference/roi_score 等）
+3. `roi_source`（例如 `manual_override`、`auto_per_video:orb:portrait:5+shift`）
+4. `roi_details`（match/inlier/reference/roi_score，以及可选 `post_shift` 细节）
 
 ---
 
@@ -368,6 +380,10 @@ ROI 选择优先顺序（`resolve_roi_rect`）：
 7. 若 `inlier_count >= min_inliers`，将参考 ROI 通过仿射矩阵映射到当前视频。
 8. 否则回退到固定 ROI（`fallback_rect`）。
 9. 可选 `refine=true` 时执行局部网格搜索精调 ROI。
+10. 可选执行 `post_shift` 后处理：
+   1. `fixed`：按固定比例/像素平移 ROI。
+   2. `adaptive_copper`：根据 ROI 内铜色区域（工件）质心自适应计算平移。
+   3. 支持 `left_only/right_only/both` 方向约束与最大平移比例限制。
 
 该模式本质是“**几何对齐 + 局部评分优化**”。
 
@@ -389,6 +405,7 @@ ROI 选择优先顺序（`resolve_roi_rect`）：
 1. 抑制大量绿色台架区域。
 2. 保留裂缝邻域的金属纹理结构。
 3. 防止 ROI 偏到纯铜背景。
+4. 注意：该评分用于 `refine` 局部搜索；`fullcrack` 当前配置已将 `refine` 关闭，避免“螺母中心化”偏差。
 
 ## 6.2.4 在线参考池更新
 
@@ -403,6 +420,23 @@ ROI 选择优先顺序（`resolve_roi_rect`）：
 
 1. 逐步适配拍摄角度变化。
 2. 提升后续视频匹配稳定性。
+
+## 6.2.5 ROI 后处理自适应平移（`adaptive_copper`）
+
+当前代码新增 `resolve_post_shift`，在 ORB 映射（与可选 refine）之后执行 ROI 后处理，核心逻辑：
+
+1. 在当前 ROI 内做 HSV 铜色掩膜统计（`copper_ratio`、`copper_pixels`、`copper_cx`）。
+2. 当统计满足 `post_shift_min_ratio` 与 `post_shift_min_pixels` 时，计算目标偏移：
+   1. 目标是使铜色质心靠近 `post_shift_target_x`（默认 0.48）。
+   2. 偏移量再用 `post_shift_max_abs_ratio` 限幅。
+3. 使用 `post_shift_direction` 做方向约束：
+   1. `left_only`：只允许向左纠偏（避免把 ROI 推向工件外侧）。
+   2. `right_only`：只允许向右纠偏。
+   3. `both`：双向都允许。
+4. 若自适应条件不满足，按 `post_shift_fallback` 处理：
+   1. `none`：不平移。
+   2. `fixed`：退回固定平移。
+5. 真正平移使用“保持宽高不变”的边界钳制逻辑，避免触边后 ROI 尺寸意外变化。
 
 ## 6.3 粗扫评分曲线
 
@@ -484,15 +518,18 @@ ROI 选择优先顺序（`resolve_roi_rect`）：
 1. 用 `extraction_points` 在 `[start,end]` 以 `fine_fps` 采样。
 2. 每个采样点读取源帧，输出 `frames/%06d.ext`。
 3. 若 `crop_output=true`，按 ROI 裁剪输出 `crops/%06d.ext`。
-4. 记录 manifest 行：
+4. 若配置 `crop_resize`，则裁剪后再统一尺寸：
+   1. `crop_resize_mode=letterbox`：保持比例并填充（默认填充值 114）。
+   2. `crop_resize_mode=stretch`：直接拉伸到目标尺寸。
+5. 记录 manifest 行：
    1. `frame_id`
    2. `t_sec`（按 `source_frame_idx/fps` 回算）
    3. `source_frame_idx`
    4. `frame_path`
    5. `crop_path`
    6. `roi_rect`
-5. 校验：若抽取 0 帧则抛异常。
-6. 上层 `process_video` 会额外检查 `frames` 与 `crops` 数量一致。
+6. 校验：若抽取 0 帧则抛异常。
+7. 上层 `process_video` 会额外检查 `frames` 与 `crops` 数量一致。
 
 ## 6.6 预览拼图与 HTML 报告
 
@@ -549,7 +586,7 @@ ROI 选择优先顺序（`resolve_roi_rect`）：
 你当前目录里 `30`、`32` 出现了这个现象（`segments.json=1`，目录里 `seg_*` 为 2）。  
 如果需要“输出与本次结果严格一一对应”，建议每次运行前清空对应 `output_dir` 或在程序中增加“每视频开始前清理旧 `seg_*`”逻辑。
 
-## 8.3 新增“完整裂缝覆盖”运行配置
+## 8.3 新增“完整裂缝覆盖”运行配置（当前主用 `fullcrack`）
 
 针对“提取帧未覆盖裂缝全过程”的问题，当前代码已新增 `run` 分段策略与配套配置：
 
@@ -559,8 +596,19 @@ ROI 选择优先顺序（`resolve_roi_rect`）：
    1. `segment_strategy: run`
    2. `run_pre_pad_sec` / `run_post_pad_sec`
    3. 更高 `coarse_fps` 与 `fine_fps`
+   4. `roi.auto.refine: false`（避免细化评分导致 ROI 过度靠近螺母中心）
+   5. `roi.auto.post_shift_mode: adaptive_copper`（自适应纠偏）
+   6. `frame_extraction.crop_resize: [640, 640]`（YOLO 友好输入）
 
-该配置会输出到 `out_rawdata_fullcrack/`，用于和 `out_rawdata_autoroi/` 并行对比，不覆盖原结果。
+该配置当前输出到 `out_rawdata_fullcrack2/`，用于和 `out_rawdata_autoroi/` 并行对比，不覆盖原结果。
+
+## 8.4 自适应后处理效果（`dry_run` 对比）
+
+以 48 视频对比“固定左移”与“自适应左向纠偏（left_only）”：
+
+1. ROI 左边界触边（`x<=1`）数量：`32/48 -> 3/48`。
+2. 中位 `roi_rect.x`：`0 -> 146`，明显降低“整体贴左”风险。
+3. 仍触边的少量样本通常本身处于极限位置，已在 `roi_details.post_shift` 中记录 `clamped=true` 便于后续人工复核。
 
 ---
 
