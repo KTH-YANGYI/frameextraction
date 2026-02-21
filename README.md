@@ -54,6 +54,10 @@ python crack_analyze.py --config config.yaml [--input_dir ...] [--output_dir ...
   - `roi.auto.min_inliers`: lower if angle changes are large and matching fails
   - `roi.auto.search_ratio/search_steps/scales`: controls local recentering strength
   - `out/_run/roi_overrides.json`: inspect per-video ROI, source, match stats
+- Global unique frame naming:
+  - set `frame_extraction.naming_mode: global`
+  - set `frame_extraction.global_start_index: 0`
+  - filenames then continue across videos (e.g., first video `000000...000180`, second starts at `000181`)
 - YOLO training size alignment:
   - set `frame_extraction.crop_resize: [640, 640]`
   - keep aspect ratio with `frame_extraction.crop_resize_mode: letterbox` (recommended)

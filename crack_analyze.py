@@ -91,6 +91,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "jpg_quality_q": 2,
         "keep_full_frames": False,
         "crop_output": True,
+        "naming_mode": "per_segment",
+        "global_start_index": 0,
         "crop_resize": None,
         "crop_resize_mode": "letterbox",
         "crop_resize_pad_value": 114,
@@ -1414,6 +1416,21 @@ def resize_crop_image(
     return canvas
 
 
+def resolve_frame_name_id(
+    local_seq_idx: int,
+    naming_state: dict[str, Any],
+) -> tuple[str, int]:
+    mode = str(naming_state.get("mode", "per_segment")).strip().lower()
+    if mode == "global":
+        seq_idx = int(naming_state.get("next_index", 0))
+        naming_state["next_index"] = seq_idx + 1
+    else:
+        seq_idx = int(local_seq_idx)
+    if seq_idx < 0:
+        raise PipelineError("frame_extraction.global_start_index must be >= 0")
+    return f"{seq_idx:06d}", seq_idx
+
+
 def extraction_points(
     start_sec: float,
     end_sec: float,
@@ -1520,6 +1537,7 @@ def extract_segment(
     frame_cfg: dict[str, Any],
     report_cfg: dict[str, Any],
     video_out_dir: Path,
+    naming_state: dict[str, Any],
 ) -> tuple[Path, Path | None, list[dict[str, Any]], Path | None]:
     segment_id = seg["segment_id"]
     seg_dir = video_out_dir / segment_id
@@ -1561,7 +1579,8 @@ def extract_segment(
             ok, frame = cap.read()
             if not ok or frame is None:
                 continue
-            frame_name = f"{i:06d}.{ext}"
+            frame_id_str, _seq_idx = resolve_frame_name_id(i, naming_state)
+            frame_name = f"{frame_id_str}.{ext}"
             frame_abs = frames_dir / frame_name
             image_write(frame_abs, frame, ext, jpg_q)
             extracted_abs.append(frame_abs)
@@ -1584,7 +1603,7 @@ def extract_segment(
 
             rows.append(
                 {
-                    "frame_id": f"{i:06d}",
+                    "frame_id": frame_id_str,
                     "t_sec": f"{(src_idx / float(meta['fps'])):.6f}",
                     "source_frame_idx": int(src_idx),
                     "frame_path": (Path("frames") / frame_name).as_posix(),
@@ -1695,6 +1714,7 @@ def process_video(
     dry_run: bool,
     report_rows: list[dict[str, Any]],
     roi_rows: list[dict[str, Any]],
+    naming_state: dict[str, Any],
 ) -> None:
     video_id = video_path.stem
     video_out_dir = out_root / video_id
@@ -1803,6 +1823,7 @@ def process_video(
             frame_cfg=frame_cfg,
             report_cfg=report_cfg,
             video_out_dir=video_out_dir,
+            naming_state=naming_state,
         )
         if frame_cfg.get("crop_output", True):
             frames_count = len(list((seg_dir / "frames").glob("*")))
@@ -1843,6 +1864,17 @@ def run() -> int:
 
     fail_fast = bool(cfg.get("runtime", {}).get("fail_fast", False))
     dry_run = bool(cfg.get("runtime", {}).get("dry_run", False))
+    frame_cfg = cfg.get("frame_extraction", {}) or {}
+    naming_mode = str(frame_cfg.get("naming_mode", "per_segment")).strip().lower()
+    if naming_mode not in ("per_segment", "global"):
+        raise PipelineError("frame_extraction.naming_mode must be 'per_segment' or 'global'")
+    global_start_index = int(frame_cfg.get("global_start_index", 0))
+    if global_start_index < 0:
+        raise PipelineError("frame_extraction.global_start_index must be >= 0")
+    naming_state: dict[str, Any] = {
+        "mode": naming_mode,
+        "next_index": int(global_start_index),
+    }
 
     failures: list[dict[str, Any]] = []
     report_rows: list[dict[str, Any]] = []
@@ -1863,6 +1895,11 @@ def run() -> int:
     logger.info("input_dir=%s", input_dir)
     logger.info("output_dir=%s", output_dir)
     logger.info("roi_mode=%s", str(cfg.get("roi", {}).get("mode", "fixed")))
+    logger.info(
+        "frame_naming_mode=%s start_index=%d",
+        naming_mode,
+        global_start_index if naming_mode == "global" else 1,
+    )
 
     for idx, video_path in enumerate(videos, start=1):
         video_id = video_path.stem
@@ -1877,6 +1914,7 @@ def run() -> int:
                 dry_run=dry_run,
                 report_rows=report_rows,
                 roi_rows=roi_rows,
+                naming_state=naming_state,
             )
         except Exception as exc:  # noqa: BLE001
             err = {

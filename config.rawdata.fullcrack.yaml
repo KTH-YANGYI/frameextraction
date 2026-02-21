@@ -57,6 +57,8 @@ frame_extraction:
   jpg_quality_q: 2
   keep_full_frames: false
   crop_output: true
+  naming_mode: global
+  global_start_index: 0
   crop_resize: [640, 640]
   crop_resize_mode: letterbox
   crop_resize_pad_value: 114
