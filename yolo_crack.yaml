@@ -1,0 +1,5 @@
+path: ../dataset
+train: train/images
+names:
+  0: crack
+  1: broken
