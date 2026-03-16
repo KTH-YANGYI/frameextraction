@@ -50,7 +50,13 @@ segment_detection:
   merge_gap_sec: 0.5
 
 frame_extraction:
-  fine_fps: 10.0
+  fine_fps: 10.0              # candidate fps for hybrid mode; final output fps for uniform mode
+  sampling_mode: uniform      # uniform | hybrid
+  anchor_fps: 2.0             # hybrid only: keep sparse anchor frames for temporal coverage
+  max_frames_per_segment: 48  # hybrid only: hard cap on extracted frames per segment
+  change_threshold: 0.035     # hybrid only: mean abs diff threshold in ROI grayscale thumbnail
+  min_gap_sec: 0.20           # hybrid only: temporal NMS gap for added change frames
+  diff_resize_w: 160          # hybrid only: ROI thumbnail width used for change scoring
   image_ext: jpg
   jpg_quality_q: 2
   keep_full_frames: false

@@ -3,7 +3,7 @@ output_dir: ./out_rawdata_fullcrack2
 
 roi:
   mode: auto_per_video
-  rect_landscape: [520, 360, 260, 220]
+  rect_landscape: [650, 330, 260, 220]
   rect_portrait: [160, 260, 360, 360]
   overrides:
     "11": [100, 500, 340, 340]
@@ -20,6 +20,8 @@ roi:
     search_ratio: 0.18
     search_steps: 7
     scales: [0.9, 1.0, 1.1]
+    reference_videos:
+      landscape: 2.mp4
     # Adaptive post-shift: center copper/golden workpiece instead of fixed left shift.
     post_shift_mode: adaptive_copper
     post_shift_target_x: 0.48
@@ -53,6 +55,12 @@ segment_detection:
 
 frame_extraction:
   fine_fps: 15.0
+  sampling_mode: hybrid
+  anchor_fps: 2.0
+  max_frames_per_segment: 48
+  change_threshold: 0.035
+  min_gap_sec: 0.20
+  diff_resize_w: 160
   image_ext: jpg
   jpg_quality_q: 2
   keep_full_frames: false

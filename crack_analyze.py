@@ -56,6 +56,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "search_ratio": 0.18,
             "search_steps": 7,
             "scales": [0.9, 1.0, 1.1],
+            "reference_videos": {},
             "post_shift_mode": "fixed",
             "post_shift_ratio": [0.0, 0.0],
             "post_shift_px": [0, 0],
@@ -89,6 +90,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "frame_extraction": {
         "fine_fps": 10.0,
+        "sampling_mode": "uniform",
+        "anchor_fps": 2.0,
+        "max_frames_per_segment": 48,
+        "change_threshold": 0.035,
+        "min_gap_sec": 0.20,
+        "diff_resize_w": 160,
         "image_ext": "jpg",
         "jpg_quality_q": 2,
         "keep_full_frames": False,
@@ -979,9 +986,125 @@ def refine_roi_rect(frame: np.ndarray, init_rect: list[int], auto_cfg: dict[str,
 
 
 # 中文注释：函数 choose_reference_videos，用于当前步骤处理。
-def choose_reference_videos(videos: list[Path], logger: logging.Logger) -> dict[str, Path]:
+def resolve_reference_video_choice(videos: list[Path], choice: Any) -> Path | None:
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if choice is None:
+        # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+        return None
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    choice_text = str(choice).strip()
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if not choice_text:
+        # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+        return None
+
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    choice_path = Path(choice_text)
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    choice_name = choice_path.name.lower()
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    choice_stem = choice_path.stem.lower()
+
+    # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+    for path in videos:
+        # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+        if path.name.lower() == choice_name:
+            # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+            return path
+
+    # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+    for path in videos:
+        # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+        if path.stem.lower() == choice_stem:
+            # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+            return path
+
+    # 中文注释（函数内）：异常处理：包装风险操作并执行兼容处理。
+    try:
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        resolved_choice = choice_path.expanduser().resolve()
+    except Exception:  # noqa: BLE001
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        resolved_choice = choice_path
+
+    # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+    for path in videos:
+        # 中文注释（函数内）：异常处理：包装风险操作并执行兼容处理。
+        try:
+            # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+            if path.resolve() == resolved_choice:
+                # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+                return path
+        except Exception:  # noqa: BLE001
+            # 中文注释（函数内）：流程控制：跳过当前轮循环的剩余语句。
+            continue
+
+    # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+    return None
+
+
+# 中文注释：函数 choose_reference_videos，用于当前步骤处理。
+def choose_reference_videos(videos: list[Path], auto_cfg: dict[str, Any], logger: logging.Logger) -> dict[str, Path]:
     # 中文注释（函数内）：赋值语句：带类型标注地初始化变量。
     refs: dict[str, Path] = {}
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    configured_refs = auto_cfg.get("reference_videos", {}) or {}
+
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if isinstance(configured_refs, dict):
+        # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+        for ori in ("landscape", "portrait"):
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            choice = configured_refs.get(ori)
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            path = resolve_reference_video_choice(videos, choice)
+            # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+            if path is None:
+                # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+                if choice is not None:
+                    # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+                    logger.warning("configured reference video[%s]=%s not found; fallback to auto selection", ori, choice)
+                # 中文注释（函数内）：流程控制：跳过当前轮循环的剩余语句。
+                continue
+
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            cap = cv2.VideoCapture(str(path))
+            # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+            if not cap.isOpened():
+                # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+                cap.release()
+                # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+                logger.warning("configured reference video[%s]=%s could not be opened; fallback to auto selection", ori, path.name)
+                # 中文注释（函数内）：流程控制：跳过当前轮循环的剩余语句。
+                continue
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+            # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+            cap.release()
+            # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+            if width <= 0 or height <= 0:
+                # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+                logger.warning("configured reference video[%s]=%s has invalid dimensions; fallback to auto selection", ori, path.name)
+                # 中文注释（函数内）：流程控制：跳过当前轮循环的剩余语句。
+                continue
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            actual_ori = orientation_label(width, height)
+            # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+            if actual_ori != ori:
+                # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+                logger.warning(
+                    "configured reference video[%s]=%s is %s; fallback to auto selection",
+                    ori,
+                    path.name,
+                    actual_ori,
+                )
+                # 中文注释（函数内）：流程控制：跳过当前轮循环的剩余语句。
+                continue
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            refs[ori] = path
+
     # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
     for path in videos:
         # 中文注释（函数内）：赋值语句：保存或更新中间变量。
@@ -1050,7 +1173,7 @@ def build_auto_roi_context(videos: list[Path], cfg: dict[str, Any], logger: logg
     max_refs = max(2, int(auto_cfg.get("max_refs", 10)))
 
     # 中文注释（函数内）：赋值语句：保存或更新中间变量。
-    ref_videos = choose_reference_videos(videos, logger)
+    ref_videos = choose_reference_videos(videos, auto_cfg, logger)
     # 中文注释（函数内）：赋值语句：保存或更新中间变量。
     orb = cv2.ORB_create(nfeatures=orb_nfeatures)
     # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
@@ -2330,6 +2453,311 @@ def extraction_points(
     return uniq_idx, uniq_t
 
 
+def build_hybrid_candidates(
+    start_sec: float,
+    end_sec: float,
+    fine_fps: float,
+    anchor_fps: float,
+    src_fps: float,
+    frame_count: int,
+) -> list[dict[str, Any]]:
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    max_idx = max(0, int(frame_count) - 1)
+    # 中文注释（函数内）：赋值语句：带类型标注地初始化变量。
+    candidates_by_idx: dict[int, dict[str, Any]] = {}
+
+    # 中文注释（函数内）：函数定义：封装候选帧的统一去重逻辑。
+    def add_candidate(frame_idx: int, *, is_boundary: bool = False, is_anchor: bool = False) -> None:
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        frame_idx = int(np.clip(int(frame_idx), 0, max_idx))
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        entry = candidates_by_idx.get(frame_idx)
+        # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+        if entry is None:
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            entry = {
+                "source_frame_idx": frame_idx,
+                "t_sec": float(frame_idx / max(1.0, float(src_fps))),
+                "is_boundary": False,
+                "is_anchor": False,
+            }
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            candidates_by_idx[frame_idx] = entry
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        entry["is_boundary"] = bool(entry["is_boundary"] or is_boundary)
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        entry["is_anchor"] = bool(entry["is_anchor"] or is_anchor)
+
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    fine_idx, _fine_t = extraction_points(start_sec, end_sec, fine_fps, src_fps, frame_count)
+    # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+    for frame_idx in fine_idx:
+        # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+        add_candidate(frame_idx)
+
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    boundary_start_idx = int(np.clip(round(float(start_sec) * float(src_fps)), 0, max_idx))
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    boundary_end_idx = int(np.clip(round(float(end_sec) * float(src_fps)), 0, max_idx))
+    # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+    add_candidate(boundary_start_idx, is_boundary=True)
+    # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+    add_candidate(boundary_end_idx, is_boundary=True)
+
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    anchor_idx, _anchor_t = extraction_points(start_sec, end_sec, anchor_fps, src_fps, frame_count)
+    # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+    for frame_idx in anchor_idx:
+        # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+        add_candidate(frame_idx, is_anchor=True)
+
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    candidates = list(candidates_by_idx.values())
+    # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+    candidates.sort(key=lambda item: int(item["source_frame_idx"]))
+    # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+    return candidates
+
+
+def choose_evenly_spaced_positions(positions: list[int], count: int) -> set[int]:
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if count <= 0 or not positions:
+        # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+        return set()
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if count >= len(positions):
+        # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+        return set(positions)
+
+    # 中文注释（函数内）：赋值语句：带类型标注地初始化变量。
+    chosen: list[int] = []
+    # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+    for raw_pos in np.linspace(0, len(positions) - 1, num=count, endpoint=True).tolist():
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        pos = positions[int(round(raw_pos))]
+        # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+        if pos not in chosen:
+            # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+            chosen.append(pos)
+    # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+    for pos in positions:
+        # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+        if len(chosen) >= count:
+            # 中文注释（函数内）：流程控制：提前跳出当前循环。
+            break
+        # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+        if pos not in chosen:
+            # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+            chosen.append(pos)
+    # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+    return set(chosen[:count])
+
+
+def frame_change_score(prev_gray: np.ndarray, curr_gray: np.ndarray) -> float:
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if prev_gray.shape != curr_gray.shape:
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        curr_gray = cv2.resize(curr_gray, (prev_gray.shape[1], prev_gray.shape[0]), interpolation=cv2.INTER_AREA)
+    # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+    return float(np.mean(np.abs(curr_gray - prev_gray)) / 255.0)
+
+
+def select_segment_samples(
+    cap: cv2.VideoCapture,
+    meta: dict[str, Any],
+    roi_rect: list[int],
+    seg: dict[str, Any],
+    frame_cfg: dict[str, Any],
+) -> list[dict[str, Any]]:
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    src_fps = float(meta["fps"])
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    frame_count = int(meta["frame_count"])
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    start_sec = float(seg["start_sec"])
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    end_sec = float(seg["end_sec"])
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    fine_fps = float(frame_cfg.get("fine_fps", 10.0))
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    sampling_mode = str(frame_cfg.get("sampling_mode", "uniform")).strip().lower()
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if sampling_mode not in ("uniform", "hybrid"):
+        # 中文注释（函数内）：抛出异常：向上层传递错误信号。
+        raise PipelineError("frame_extraction.sampling_mode must be 'uniform' or 'hybrid'")
+
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if sampling_mode == "uniform":
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        idx_points, _t_points = extraction_points(start_sec, end_sec, fine_fps, src_fps, frame_count)
+        # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+        return [
+            {
+                "source_frame_idx": int(src_idx),
+                "t_sec": float(src_idx / src_fps),
+                "sample_reason": "",
+                "change_score": None,
+            }
+            for src_idx in idx_points
+        ]
+
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    anchor_fps = float(frame_cfg.get("anchor_fps", 2.0))
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    max_frames_per_segment = int(frame_cfg.get("max_frames_per_segment", 48))
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    change_threshold = float(frame_cfg.get("change_threshold", 0.035))
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    min_gap_sec = max(0.0, float(frame_cfg.get("min_gap_sec", 0.20)))
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    diff_resize_w = int(frame_cfg.get("diff_resize_w", 160))
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if anchor_fps <= 0:
+        # 中文注释（函数内）：抛出异常：向上层传递错误信号。
+        raise PipelineError("frame_extraction.anchor_fps must be > 0")
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if max_frames_per_segment <= 0:
+        # 中文注释（函数内）：抛出异常：向上层传递错误信号。
+        raise PipelineError("frame_extraction.max_frames_per_segment must be > 0")
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if change_threshold < 0:
+        # 中文注释（函数内）：抛出异常：向上层传递错误信号。
+        raise PipelineError("frame_extraction.change_threshold must be >= 0")
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if diff_resize_w <= 0:
+        # 中文注释（函数内）：抛出异常：向上层传递错误信号。
+        raise PipelineError("frame_extraction.diff_resize_w must be > 0")
+
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    candidates = build_hybrid_candidates(
+        start_sec=start_sec,
+        end_sec=end_sec,
+        fine_fps=fine_fps,
+        anchor_fps=anchor_fps,
+        src_fps=src_fps,
+        frame_count=frame_count,
+    )
+    # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+    if not candidates:
+        # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+        return []
+
+    # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+    for candidate in candidates:
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        candidate["thumb"] = read_gray_roi(cap, int(candidate["source_frame_idx"]), roi_rect, diff_resize_w)
+
+    # 中文注释（函数内）：赋值语句：带类型标注地初始化变量。
+    selected: dict[int, dict[str, Any]] = {}
+    # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+    for pos, candidate in enumerate(candidates):
+        # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+        if bool(candidate["is_boundary"]):
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            selected[pos] = {"sample_reason": "boundary", "change_score": None}
+
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    anchor_positions = [
+        pos
+        for pos, candidate in enumerate(candidates)
+        if bool(candidate["is_anchor"]) and pos not in selected
+    ]
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    anchor_budget = max(0, max_frames_per_segment - len(selected))
+    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+    chosen_anchor_positions = choose_evenly_spaced_positions(anchor_positions, min(anchor_budget, len(anchor_positions)))
+    # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+    for pos in chosen_anchor_positions:
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        selected[pos] = {"sample_reason": "anchor", "change_score": None}
+
+    # 中文注释（函数内）：循环处理：在条件成立时重复执行。
+    while len(selected) < max_frames_per_segment:
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        selected_positions = sorted(selected)
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        best_pos = None
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        best_score = -1.0
+
+        # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+        for pos, candidate in enumerate(candidates):
+            # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+            if pos in selected:
+                # 中文注释（函数内）：流程控制：跳过当前轮循环的剩余语句。
+                continue
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            curr_thumb = candidate.get("thumb")
+            # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+            if curr_thumb is None:
+                # 中文注释（函数内）：流程控制：跳过当前轮循环的剩余语句。
+                continue
+
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            cand_t = float(candidate["t_sec"])
+            # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+            if any(abs(cand_t - float(candidates[sel_pos]["t_sec"])) < min_gap_sec for sel_pos in selected_positions):
+                # 中文注释（函数内）：流程控制：跳过当前轮循环的剩余语句。
+                continue
+
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            prev_selected_positions = [
+                sel_pos
+                for sel_pos in selected_positions
+                if sel_pos < pos and candidates[sel_pos].get("thumb") is not None
+            ]
+            # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+            if not prev_selected_positions:
+                # 中文注释（函数内）：流程控制：跳过当前轮循环的剩余语句。
+                continue
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            prev_pos = prev_selected_positions[-1]
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            score = frame_change_score(candidates[prev_pos]["thumb"], curr_thumb)
+            # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+            if score < change_threshold:
+                # 中文注释（函数内）：流程控制：跳过当前轮循环的剩余语句。
+                continue
+            # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+            if score > best_score or (
+                best_pos is not None
+                and math.isclose(score, best_score)
+                and cand_t < float(candidates[best_pos]["t_sec"])
+            ):
+                # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+                best_pos = pos
+                # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+                best_score = float(score)
+
+        # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
+        if best_pos is None:
+            # 中文注释（函数内）：流程控制：提前跳出当前循环。
+            break
+
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        selected[best_pos] = {"sample_reason": "change", "change_score": float(best_score)}
+
+    # 中文注释（函数内）：赋值语句：带类型标注地初始化变量。
+    samples: list[dict[str, Any]] = []
+    # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
+    for pos in sorted(selected):
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        candidate = candidates[pos]
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        selected_meta = selected[pos]
+        # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
+        samples.append(
+            {
+                "source_frame_idx": int(candidate["source_frame_idx"]),
+                "t_sec": float(candidate["t_sec"]),
+                "sample_reason": str(selected_meta["sample_reason"]),
+                "change_score": selected_meta.get("change_score"),
+            }
+        )
+    # 中文注释（函数内）：返回结果：结束当前函数并输出值。
+    return samples
+
+
 # 中文注释：函数 write_manifest，用于当前步骤处理。
 def write_manifest(manifest_path: Path, rows: list[dict[str, Any]]) -> None:
     # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
@@ -2342,6 +2770,8 @@ def write_manifest(manifest_path: Path, rows: list[dict[str, Any]]) -> None:
         "frame_path",
         "crop_path",
         "roi_rect",
+        "sample_reason",
+        "change_score",
     ]
     # 中文注释（函数内）：上下文管理：在受控资源作用域内执行。
     with manifest_path.open("w", encoding="utf-8", newline="") as f:
@@ -2484,17 +2914,6 @@ def extract_segment(
     crop_resize_pad_value = int(frame_cfg.get("crop_resize_pad_value", 114))
 
     # 中文注释（函数内）：赋值语句：保存或更新中间变量。
-    fine_fps = float(frame_cfg.get("fine_fps", 10.0))
-    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
-    idx_points, t_points = extraction_points(
-        start_sec=float(seg["start_sec"]),
-        end_sec=float(seg["end_sec"]),
-        fine_fps=fine_fps,
-        src_fps=float(meta["fps"]),
-        frame_count=int(meta["frame_count"]),
-    )
-
-    # 中文注释（函数内）：赋值语句：保存或更新中间变量。
     cap = cv2.VideoCapture(str(video_path))
     # 中文注释（函数内）：条件分支：根据条件选择后续处理路径。
     if not cap.isOpened():
@@ -2509,8 +2928,18 @@ def extract_segment(
     extracted_crop_abs: list[Path] = []
     # 中文注释（函数内）：异常处理：包装风险操作并执行兼容处理。
     try:
+        # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+        selected_samples = select_segment_samples(
+            cap=cap,
+            meta=meta,
+            roi_rect=roi_rect,
+            seg=seg,
+            frame_cfg=frame_cfg,
+        )
         # 中文注释（函数内）：循环处理：遍历集合并逐项执行。
-        for i, (src_idx, req_t) in enumerate(zip(idx_points, t_points), start=1):
+        for i, sample in enumerate(selected_samples, start=1):
+            # 中文注释（函数内）：赋值语句：保存或更新中间变量。
+            src_idx = int(sample["source_frame_idx"])
             # 中文注释（函数内）：表达式语句：执行调用或产生副作用。
             cap.set(cv2.CAP_PROP_POS_FRAMES, int(src_idx))
             # 中文注释（函数内）：赋值语句：保存或更新中间变量。
@@ -2565,6 +2994,12 @@ def extract_segment(
                     "frame_path": (Path("frames") / frame_name).as_posix(),
                     "crop_path": crop_rel,
                     "roi_rect": ",".join(str(v) for v in roi_rect),
+                    "sample_reason": str(sample.get("sample_reason", "")),
+                    "change_score": (
+                        ""
+                        if sample.get("change_score") is None
+                        else f"{float(sample['change_score']):.6f}"
+                    ),
                 }
             )
     finally:
